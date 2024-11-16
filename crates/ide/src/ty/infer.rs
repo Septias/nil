@@ -125,11 +125,20 @@ impl InferCtx<'_> {
         let ty = match ty {
             super::Ty::Unknown => Ty::Unknown,
             super::Ty::Bool => Ty::Bool,
-            super::Ty::Int => Ty::Int,
-            super::Ty::Float => Ty::Float,
+            super::Ty::Number => Ty::Int,
             super::Ty::String => Ty::String,
             super::Ty::Path => Ty::Path,
             super::Ty::List(_) | super::Ty::Lambda(..) | super::Ty::Attrset(_) => Ty::External(ty),
+            super::Ty::Top => todo!(),
+            super::Ty::Bottom => todo!(),
+            super::Ty::Null => todo!(),
+            super::Ty::Undefined => todo!(),
+            super::Ty::Var(_) => todo!(),
+            super::Ty::Optional(_) => todo!(),
+            super::Ty::Pattern(_, _) => todo!(),
+            super::Ty::Union(_, _) => todo!(),
+            super::Ty::Inter(_, _) => todo!(),
+            super::Ty::Recursive(_, _) => todo!(),
         };
         TyVar(self.table.push(ty))
     }
@@ -565,8 +574,8 @@ impl<'a> Collector<'a> {
         match ty {
             Ty::Unknown => super::Ty::Unknown,
             Ty::Bool => super::Ty::Bool,
-            Ty::Int => super::Ty::Int,
-            Ty::Float => super::Ty::Float,
+            Ty::Int => super::Ty::Number,
+            Ty::Float => super::Ty::Number,
             Ty::String => super::Ty::String,
             Ty::Path => super::Ty::Path,
             Ty::List(a) => super::Ty::List(self.collect(a).into()),

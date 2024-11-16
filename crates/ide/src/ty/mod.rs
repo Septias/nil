@@ -1,11 +1,13 @@
+use strum_macros::{AsRefStr, Display, EnumDiscriminants};
+
 #[rustfmt::skip]
 #[macro_export]
 macro_rules! ty {
-    (?) => { $crate::ty::Ty::Unknown };
-    (!) => { $crate::ty::Ty::Unknown };
+    (?) => { $crate::ty::Ty::Undefined };
+    (!) => { $crate::ty::Ty::Undefined };
     (bool) => { $crate::ty::Ty::Bool };
-    (int) => { $crate::ty::Ty::Int };
-    (float) => { $crate::ty::Ty::Float };
+    (int) => { $crate::ty::Ty::Number };
+    (float) => { $crate::ty::Ty::Number };
     (string) => { $crate::ty::Ty::String };
     (regex) => { $crate::ty::Ty::String };
     (path) => { $crate::ty::Ty::Path };
@@ -14,7 +16,7 @@ macro_rules! ty {
     (derivation) => { $crate::ty::known::DERIVATION.clone() };
 
     // TODO: Union type.
-    (number) => { $crate::ty::Ty::Float };
+    (number) => { $crate::ty::Ty::Number };
     (stringish) => { $crate::ty::Ty::String };
     ($ty:tt | $($rest:tt)|+) => {{
         $(let _ = ty!($rest);)+
@@ -44,7 +46,7 @@ macro_rules! ty {
             Some((ty!($rest_ty), $crate::ty::AttrSource::Unknown)),
         ))
     }};
-    ({($src:expr) $($key:literal : $ty:tt),* $(,)? }) => {{
+    ({($src:expr) $($key:literal : $ty:tt),* $(,)? }) =>{{
         $crate::ty::Ty::Attrset($crate::ty::Attrset::from_internal(
             [
                 $(($key, ty!($ty), $src),)*
@@ -80,8 +82,7 @@ mod tests;
 use crate::def::NameId;
 use crate::{DefDatabase, FileId, ModuleKind, SourceRootId};
 use std::collections::HashMap;
-use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 pub use display::{Config as DisplayConfig, TyDisplay};
 pub use infer::InferenceResult;
@@ -102,22 +103,51 @@ pub trait TyDatabase: DefDatabase {
     fn flake_input_tys(&self, sid: SourceRootId) -> Arc<HashMap<String, Ty>>;
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub enum Ty {
-    Unknown,
+/// A single identifier.
+/// The name should be a debrujin index and the path is used for set accesses.
+#[derive(Debug, Clone, Default)]
+pub struct Var {
+    pub level: usize,
+    pub id: usize,
+    pub lower_bounds: Arc<RwLock<Vec<Ty>>>,
+    pub upper_bounds: Arc<RwLock<Vec<Ty>>>,
+}
 
-    // We won't wanna infer to `null` before supporting union types.
-    // It would contain no information.
-    // Null,
+impl PartialEq for Var {
+    fn eq(&self, other: &Self) -> bool {
+        todo!()
+    }
+}
+
+impl Eq for Var {}
+
+/// A nix language type.
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumDiscriminants, AsRefStr)]
+#[strum_discriminants(derive(AsRefStr, Display))]
+#[strum_discriminants(name(TypeName))]
+pub enum Ty {
+    Top,
+    Bottom,
+
+    Number,
     Bool,
-    Int,
-    Float,
     String,
     Path,
+    Null,
+    Undefined,
+    Unknown,
 
-    List(Arc<Ty>),
+    Var(Var),
     Lambda(Arc<Ty>, Arc<Ty>),
+    List(Arc<Ty>),
     Attrset(Attrset),
+    Optional(Box<Ty>),
+    Pattern(HashMap<String, (Ty, Option<Ty>)>, bool),
+
+    // Complex Tys only created by simplification
+    Union(Box<Ty>, Box<Ty>),
+    Inter(Box<Ty>, Box<Ty>),
+    Recursive(Var, Box<Ty>),
 }
 
 impl Ty {
@@ -138,12 +168,6 @@ impl Ty {
 
     pub fn debug(&self) -> TyDisplay<'_> {
         self.display_with(display::Config::FULL)
-    }
-}
-
-impl fmt::Debug for Ty {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.debug(), f)
     }
 }
 

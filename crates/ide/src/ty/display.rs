@@ -41,8 +41,6 @@ impl fmt::Display for TyDisplay<'_> {
         match self.ty {
             Ty::Unknown => "?".fmt(f),
             Ty::Bool => "bool".fmt(f),
-            Ty::Int => "int".fmt(f),
-            Ty::Float => "float".fmt(f),
             Ty::String => "string".fmt(f),
             Ty::Path => "path".fmt(f),
             Ty::List(ty) => {
@@ -111,6 +109,17 @@ impl fmt::Display for TyDisplay<'_> {
                     " }".fmt(f)
                 }
             }
+            Ty::Top => todo!(),
+            Ty::Bottom => todo!(),
+            Ty::Null => todo!(),
+            Ty::Undefined => todo!(),
+            Ty::Var(_) => todo!(),
+            Ty::Optional(_) => todo!(),
+            Ty::Pattern(_, _) => todo!(),
+            Ty::Union(_, _) => todo!(),
+            Ty::Inter(_, _) => todo!(),
+            Ty::Recursive(_, _) => todo!(),
+            Ty::Number => todo!(),
         }
     }
 }
