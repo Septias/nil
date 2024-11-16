@@ -144,7 +144,7 @@ rec {
 
               nodejs
               watchman # Required by coc.nvim for file watching.
-
+              rust-analyzer
               jq
               pre-commit
               nixfmt-rfc-style
