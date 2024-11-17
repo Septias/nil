@@ -276,6 +276,7 @@ impl NameResolution {
         })
     }
 
+    /// Try to resolve an expression.
     pub fn get(&self, expr: ExprId) -> Option<&ResolveResult> {
         self.resolve_map.get(&expr)?.as_ref()
     }

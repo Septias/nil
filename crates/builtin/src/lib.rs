@@ -1,10 +1,14 @@
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// A nix builtin.
 pub struct Builtin {
     pub kind: BuiltinKind,
+    ///? Whether the builtin is global is globally available in code.
     pub is_global: bool,
     pub summary: &'static str,
     pub doc: Option<&'static str>,
+    ///? Can only be used in impure code
     pub impure_only: bool,
+    /// Whether this builtin is experimental.
     pub experimental_feature: Option<&'static str>,
 }
 
@@ -16,6 +20,8 @@ pub enum BuiltinKind {
 }
 
 #[allow(clippy::all)]
+/// List of all builtnis
+/// PHF is a hash table built an compile time.
 pub static ALL_BUILTINS: phf::Map<&'static str, Builtin> =
     include!(concat!(env!("OUT_DIR"), "/generated.expr"));
 

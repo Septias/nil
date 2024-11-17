@@ -200,6 +200,7 @@ struct BuiltinInfo {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
+/// Nix dump language V1 or V2.
 enum DumpLanguage {
     // Nix < 2.24
     V1 {

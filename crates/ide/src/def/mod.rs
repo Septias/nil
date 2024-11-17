@@ -26,6 +26,7 @@ pub use self::path::{Path, PathAnchor, PathData};
 pub use syntax::ast::{BinaryOpKind as BinaryOp, UnaryOpKind as UnaryOp};
 
 #[salsa::query_group(DefDatabaseStorage)]
+/// Database for definitions.
 pub trait DefDatabase: SourceDatabase {
     #[salsa::interned]
     fn intern_path(&self, path_data: PathData) -> Path;
