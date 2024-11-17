@@ -8,6 +8,7 @@ const MAX_STEPS: usize = 100_000_000;
 const MAX_DEPTHS: usize = 500;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Result of parsing.
 pub struct Parse {
     green: GreenNode,
     errors: Vec<Error>,
@@ -18,6 +19,7 @@ impl Parse {
         self.green.clone()
     }
 
+    /// Get the root node of the parse result.
     pub fn root(&self) -> SourceFile {
         SourceFile::cast(self.syntax_node()).expect("The entry node is SourceFile")
     }
