@@ -13,6 +13,7 @@ use syntax::semantic::{
 };
 use syntax::Parse;
 
+/// Lower the parser into [Module] and [ModuleSourceMap].
 pub(super) fn lower(
     db: &dyn DefDatabase,
     file_id: FileId,
@@ -36,6 +37,7 @@ pub(super) fn lower(
     (module, ctx.source_map)
 }
 
+/// Context needed while executing [lower].
 struct LowerCtx<'a> {
     db: &'a dyn DefDatabase,
     file_id: FileId,
@@ -70,6 +72,8 @@ impl LowerCtx<'_> {
         self.module.exprs.alloc(Expr::Missing)
     }
 
+    /// Lower an [ast::Expr] into an allocated Expr in the DB.
+    /// Return the [ExprId].
     fn lower_expr(&mut self, expr: ast::Expr) -> ExprId {
         let ptr = AstPtr::new(expr.syntax());
         match expr {
@@ -176,6 +180,7 @@ impl LowerCtx<'_> {
         }
     }
 
+    /// Lower a lambda expression.
     fn lower_lambda(&mut self, lam: ast::Lambda, ptr: AstPtr) -> ExprId {
         let mut param_locs = HashMap::new();
         let mut lower_name = |this: &mut Self, node: ast::Name, kind: NameKind| -> NameId {
@@ -310,6 +315,7 @@ fn name_kind_of_set(set: &ast::AttrSet) -> NameKind {
     }
 }
 
+/// Merge expressions.
 #[derive(Debug)]
 struct MergingSet {
     name_kind: NameKind,
