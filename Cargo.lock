@@ -873,7 +873,6 @@ dependencies = [
  "serde_json",
  "slab",
  "ssr",
- "strum_macros",
  "syntax",
  "text-size",
  "tokio",

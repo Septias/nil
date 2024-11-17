@@ -41,6 +41,7 @@ pub struct LivenessCheckResult {
 }
 
 impl LivenessCheckResult {
+    /// Turn the liveness check results into DB Diagnostics.
     pub fn to_diagnostics<'a>(
         &'a self,
         db: &dyn DefDatabase,
@@ -77,6 +78,7 @@ impl LivenessCheckResult {
     }
 }
 
+/// Query to the DB to get liveness faults.
 pub(crate) fn liveness_check_query(
     db: &dyn DefDatabase,
     file_id: FileId,
