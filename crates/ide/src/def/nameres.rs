@@ -1,3 +1,4 @@
+///! Resolution of name bindings in nix modules.
 use super::{BindingValue, Bindings, DefDatabase, Expr, ExprId, Module, NameId};
 use crate::{Diagnostic, DiagnosticKind, FileId};
 use builtin::ALL_BUILTINS;
@@ -8,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::{iter, ops};
 
+/// Scopes of a module.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ModuleScopes {
     scopes: Arena<ScopeData>,
