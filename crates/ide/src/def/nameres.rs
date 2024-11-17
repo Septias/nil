@@ -50,6 +50,7 @@ impl ModuleScopes {
         self.scope_by_expr.get(expr_id).copied()
     }
 
+    /// Get scope ancestors.
     pub fn ancestors(&self, scope_id: ScopeId) -> impl Iterator<Item = &'_ ScopeData> + '_ {
         iter::successors(Some(scope_id), |&i| self[i].parent).map(|i| &self[i])
     }
@@ -81,6 +82,7 @@ impl ModuleScopes {
         None
     }
 
+    /// Traverse an expression of a module and alloc news scopes on the way.
     fn traverse_expr(&mut self, module: &Module, expr: ExprId, scope: ScopeId) {
         self.scope_by_expr.insert(expr, scope);
 
@@ -131,6 +133,7 @@ impl ModuleScopes {
         }
     }
 
+    /// Traverse the bindings of an expression.
     fn traverse_bindings(
         &mut self,
         module: &Module,
@@ -194,12 +197,14 @@ pub enum ResolveResult {
     WithExprs(Vec<ExprId>),
 }
 
+/// Data of a scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopeData {
     parent: Option<ScopeId>,
     kind: ScopeKind,
 }
 
+/// Kind of a scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ScopeKind {
     Definitions(HashMap<SmolStr, NameId>),
@@ -283,6 +288,7 @@ impl NameResolution {
         self.resolve_map.get(&expr)?.as_ref()
     }
 
+    /// Iterator of the resolve map.
     pub fn iter(&self) -> impl Iterator<Item = (ExprId, &'_ ResolveResult)> + '_ {
         self.resolve_map
             .iter()
@@ -316,6 +322,7 @@ impl NameResolution {
         None
     }
 
+    /// Get all undefined names.
     pub fn to_diagnostics(
         &self,
         db: &dyn DefDatabase,
