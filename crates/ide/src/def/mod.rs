@@ -238,6 +238,8 @@ pub type AstPtr = syntax::SyntaxNodePtr;
 /// Module source map.
 /// Contains expr and name maps as well as their reverses.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
+/// Module source map.
+/// Contains expr and name maps as well as their reverses.
 pub struct ModuleSourceMap {
     expr_map: HashMap<AstPtr, ExprId>,
     expr_map_rev: HashMap<ExprId, AstPtr>,
