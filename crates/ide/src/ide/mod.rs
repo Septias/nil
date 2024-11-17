@@ -48,6 +48,7 @@ pub use salsa::Cancelled;
 
 pub type Cancellable<T> = Result<T, Cancelled>;
 
+/// Root database of ide.
 #[salsa::database(SourceDatabaseStorage, DefDatabaseStorage, TyDatabaseStorage)]
 struct RootDatabase {
     storage: salsa::Storage<Self>,
@@ -125,6 +126,7 @@ impl AnalysisHost {
     }
 }
 
+/// DB for analysis.
 #[derive(Debug)]
 pub struct Analysis {
     db: salsa::Snapshot<RootDatabase>,

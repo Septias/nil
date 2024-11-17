@@ -63,6 +63,7 @@ pub(crate) fn assists(db: &dyn DefDatabase, frange: FileRange) -> Vec<Assist> {
     ctx.assists
 }
 
+/// Assists for a specific file.
 pub(crate) struct AssistsCtx<'a> {
     db: &'a dyn DefDatabase,
     frange: FileRange,
@@ -80,6 +81,7 @@ impl<'a> AssistsCtx<'a> {
         }
     }
 
+    /// Add an assist.
     fn add(
         &mut self,
         id: impl Into<String>,
@@ -99,6 +101,7 @@ impl<'a> AssistsCtx<'a> {
         });
     }
 
+    /// Find the smallest ancestor that contains this node.
     fn covering_node<N: AstNode<Language = NixLanguage>>(&self) -> Option<N> {
         let range = self.frange.range;
         if range.is_empty() {
