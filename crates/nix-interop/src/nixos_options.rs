@@ -130,6 +130,7 @@ impl<'de> de::Deserialize<'de> for RelatedPackage {
     }
 }
 
+/// Raw nix types.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "name")]
 pub enum Ty {
