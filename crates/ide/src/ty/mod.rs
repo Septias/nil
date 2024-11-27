@@ -1,5 +1,6 @@
 use strum_macros::{AsRefStr, Display, EnumDiscriminants};
 
+/// Macro to create types.
 #[rustfmt::skip]
 #[macro_export]
 macro_rules! ty {
@@ -76,9 +77,8 @@ mod infer;
 pub mod known;
 mod union_find;
 
-pub mod infer2;
 mod err2;
-med err2;
+pub mod infer2;
 #[cfg(test)]
 mod tests;
 
@@ -91,6 +91,7 @@ pub use display::{Config as DisplayConfig, TyDisplay};
 pub use infer::InferenceResult;
 use smol_str::SmolStr;
 
+/// Database for types.
 #[salsa::query_group(TyDatabaseStorage)]
 pub trait TyDatabase: DefDatabase {
     #[salsa::invoke(module_expected_ty)]
@@ -257,6 +258,7 @@ pub enum AttrSource {
     Builtin,
 }
 
+/// Returns the expected type for a [FileId].
 fn module_expected_ty(db: &dyn TyDatabase, file: FileId) -> Option<Ty> {
     match &*db.module_kind(file) {
         ModuleKind::Unknown => None,
