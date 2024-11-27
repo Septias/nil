@@ -6,6 +6,7 @@ mod file_references;
 mod goto_definition;
 mod highlight_related;
 mod hover;
+mod inlay_hints;
 mod links;
 mod references;
 mod rename;
@@ -18,6 +19,7 @@ use crate::ty::TyDatabaseStorage;
 use crate::{
     Change, Diagnostic, FileId, FilePos, FileRange, FileSet, SourceRoot, VfsPath, WorkspaceEdit,
 };
+use inlay_hints::InlayHint;
 use nix_interop::DEFAULT_IMPORT_FILE;
 use salsa::{Database, Durability, ParallelDatabase};
 use smol_str::SmolStr;
@@ -188,6 +190,10 @@ impl Analysis {
 
     pub fn hover(&self, fpos: FilePos) -> Cancellable<Option<HoverResult>> {
         self.with_db(|db| hover::hover(db, fpos))
+    }
+
+    pub fn inlay_hints(&self, file: FileId) -> Cancellable<Option<Vec<InlayHint>>> {
+        self.with_db(|db| inlay_hints::inlay_hints(db, file))
     }
 
     pub fn symbol_hierarchy(&self, file: FileId) -> Cancellable<Vec<SymbolTree>> {

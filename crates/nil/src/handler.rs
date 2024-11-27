@@ -1,3 +1,4 @@
+/// Handles for LSP client requests.
 use crate::{convert, StateSnapshot};
 use anyhow::{ensure, Context, Result};
 use async_lsp::{ErrorCode, ResponseError};
@@ -6,10 +7,11 @@ use lsp_types::{
     CodeActionParams, CodeActionResponse, CompletionParams, CompletionResponse,
     DocumentFormattingParams, DocumentHighlight, DocumentHighlightParams, DocumentLink,
     DocumentLinkParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverParams, Location, Position, PrepareRenameResponse, Range,
-    ReferenceParams, RenameParams, SelectionRange, SelectionRangeParams, SemanticTokens,
-    SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
-    SemanticTokensResult, TextDocumentPositionParams, TextEdit, Url, WorkspaceEdit,
+    GotoDefinitionResponse, Hover, HoverParams, InlayHintParams, Location, Position,
+    PrepareRenameResponse, Range, ReferenceParams, RenameParams, SelectionRange,
+    SelectionRangeParams, SemanticTokens, SemanticTokensParams, SemanticTokensRangeParams,
+    SemanticTokensRangeResult, SemanticTokensResult, TextDocumentPositionParams, TextEdit, Url,
+    WorkspaceEdit,
 };
 use nix_interop::DEFAULT_IMPORT_FILE;
 use std::process;
@@ -173,6 +175,16 @@ pub(crate) fn semantic_token_range(
 }
 
 pub(crate) fn hover(snap: StateSnapshot, params: HoverParams) -> Result<Option<Hover>> {
+    let (fpos, line_map) =
+        convert::from_file_pos(&snap.vfs(), &params.text_document_position_params)?;
+    let ret = snap.analysis.hover(fpos)?;
+    Ok(ret.map(|hover| convert::to_hover(&line_map, hover)))
+}
+
+pub(crate) fn inlay_hint(
+    snap: StateSnapshot,
+    params: InlayHintParams,
+) -> Result<Option<Vec<InlayHint>>> {
     let (fpos, line_map) =
         convert::from_file_pos(&snap.vfs(), &params.text_document_position_params)?;
     let ret = snap.analysis.hover(fpos)?;
