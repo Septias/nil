@@ -1,0 +1,3 @@
+[submodule "garnix"]
+	path = garnix
+	url = git@github.com:Septias/garnix.git
