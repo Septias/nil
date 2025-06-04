@@ -77,6 +77,7 @@ fn from_flake_output(out: &FlakeOutput) -> Ty {
 }
 
 /// Subroutine in [from_flake_output].
+// Bookmark
 fn from_flake_output_inner(out: &FlakeOutput, generic_system_depth: Option<usize>) -> Ty {
     match out {
         FlakeOutput::Leaf(leaf) => match leaf.type_ {

@@ -610,6 +610,7 @@ impl Server {
         }
 
         if config.nix_flake_auto_eval_inputs {
+            // Bookmark
             Self::load_input_flakes(flake_info, &config, &caps, &mut client).await;
         }
     }

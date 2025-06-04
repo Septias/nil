@@ -4,6 +4,7 @@ use std::path::Path;
 use anyhow::Result;
 use serde::Deserialize;
 
+// Bookmark
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct NixInfo {
     /// The version string reported by `builtins.nixVersion`.

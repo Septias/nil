@@ -10,6 +10,7 @@ use tokio::sync::watch;
 
 use crate::{FlakeUrl, NixOutOfMemory};
 
+/// Load the outputs of evaluating a flake.
 pub async fn eval_flake_output(
     nix_command: &Path,
     flake_url: &FlakeUrl,

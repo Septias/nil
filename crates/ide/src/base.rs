@@ -177,6 +177,7 @@ pub struct FlakeGraph {
 }
 
 // FIXME: Make this a tree structure.
+// Bookmark
 #[derive(Clone, PartialEq, Eq)]
 pub struct FlakeInfo {
     /// Id related with the flake content.
