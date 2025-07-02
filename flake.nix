@@ -129,6 +129,7 @@ rec {
               rust-analyzer
               jq
               pre-commit
+              cargo-expand
               nixfmt-rfc-style
               (import ./dev/nvim-lsp.nix {inherit pkgs;})
               (import ./dev/vim-coc.nix {inherit pkgs;})
@@ -164,7 +165,6 @@ rec {
                     extensions = ["rust-src"];
                   }
               )
-              pkgs.cargo-expand
             ];
         });
 
