@@ -37,7 +37,7 @@ pub trait DefDatabase: SourceDatabase {
     /// Get the module and its source map.
     fn module_with_source_map(&self, file_id: FileId) -> (Arc<Module>, Arc<ModuleSourceMap>);
 
-    /// Geth the module of given [FileId].
+    /// Get the module of given [FileId].
     fn module(&self, file_id: FileId) -> Arc<Module>;
 
     /// Get the source map of given [FileId].

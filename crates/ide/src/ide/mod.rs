@@ -156,14 +156,17 @@ impl Analysis {
         self.with_db(|db| syntax_highlighting::highlight(db, file, range))
     }
 
+    /// Recalculate all diagnostics for given file.
     pub fn diagnostics(&self, file: FileId) -> Cancellable<Vec<Diagnostic>> {
         self.with_db(|db| diagnostics::diagnostics(db, file))
     }
 
+    /// Answer goto_definition call.
     pub fn goto_definition(&self, pos: FilePos) -> Cancellable<Option<GotoDefinitionResult>> {
         self.with_db(|db| goto_definition::goto_definition(db, pos))
     }
 
+    /// Load file completions.
     pub fn completions(
         &self,
         pos: FilePos,
@@ -172,6 +175,7 @@ impl Analysis {
         self.with_db(|db| completion::completions(db, pos, trigger_char))
     }
 
+    /// Load symbol references.
     pub fn references(&self, pos: FilePos) -> Cancellable<Option<Vec<FileRange>>> {
         self.with_db(|db| references::references(db, pos))
     }
