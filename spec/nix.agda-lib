@@ -1,0 +1,5 @@
+name: nix
+include: .
+depend: standard-library
+
+
