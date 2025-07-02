@@ -77,8 +77,6 @@ mod infer;
 pub mod known;
 mod union_find;
 
-mod err2;
-pub mod infer2;
 #[cfg(test)]
 mod tests;
 
