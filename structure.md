@@ -1,5 +1,3 @@
-
-
 ## Structure
 - Lsp Server receives all calls
 	- Open/Close file -> reflect changes in files
