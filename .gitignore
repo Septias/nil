@@ -7,3 +7,4 @@
 # Profiling
 /*.svg
 perf.*
+spec/_build/2.7.0.1/agda
