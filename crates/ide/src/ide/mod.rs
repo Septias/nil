@@ -19,7 +19,7 @@ use crate::ty::TyDatabaseStorage;
 use crate::{
     Change, Diagnostic, FileId, FilePos, FileRange, FileSet, SourceRoot, VfsPath, WorkspaceEdit,
 };
-use inlay_hints::InlayHint;
+pub use inlay_hints::InlayHintResult;
 use nix_interop::DEFAULT_IMPORT_FILE;
 use salsa::{Database, Durability, ParallelDatabase};
 use smol_str::SmolStr;
@@ -196,8 +196,12 @@ impl Analysis {
         self.with_db(|db| hover::hover(db, fpos))
     }
 
-    pub fn inlay_hints(&self, file: FileId) -> Cancellable<Option<Vec<InlayHint>>> {
-        self.with_db(|db| inlay_hints::inlay_hints(db, file))
+    pub fn inlay_hints(
+        &self,
+        file: FileId,
+        range: TextRange,
+    ) -> Cancellable<Option<Vec<InlayHintResult>>> {
+        self.with_db(|db| inlay_hints::inlay_hints(db, file, range))
     }
 
     pub fn symbol_hierarchy(&self, file: FileId) -> Cancellable<Vec<SymbolTree>> {

@@ -150,6 +150,8 @@ impl Vfs {
     }
 }
 
+/// A bag of lines that can be accessed
+/// supports unicode
 #[derive(Debug, PartialEq, Eq)]
 pub struct LineMap {
     /// Invariant:

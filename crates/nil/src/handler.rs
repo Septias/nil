@@ -7,7 +7,7 @@ use lsp_types::{
     CodeActionParams, CodeActionResponse, CompletionParams, CompletionResponse,
     DocumentFormattingParams, DocumentHighlight, DocumentHighlightParams, DocumentLink,
     DocumentLinkParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverParams, InlayHintParams, Location, Position,
+    GotoDefinitionResponse, Hover, HoverParams, InlayHint, InlayHintParams, Location, Position,
     PrepareRenameResponse, Range, ReferenceParams, RenameParams, SelectionRange,
     SelectionRangeParams, SemanticTokens, SemanticTokensParams, SemanticTokensRangeParams,
     SemanticTokensRangeResult, SemanticTokensResult, TextDocumentPositionParams, TextEdit, Url,
@@ -185,10 +185,15 @@ pub(crate) fn inlay_hint(
     snap: StateSnapshot,
     params: InlayHintParams,
 ) -> Result<Option<Vec<InlayHint>>> {
-    let (fpos, line_map) =
-        convert::from_file_pos(&snap.vfs(), &params.text_document_position_params)?;
-    let ret = snap.analysis.hover(fpos)?;
-    Ok(ret.map(|hover| convert::to_hover(&line_map, hover)))
+    let (file_id, _) = convert::from_file(&snap.vfs(), &params.text_document)?;
+    let (lmap, range) = convert::from_range(&snap.vfs(), file_id, params.range)?;
+    let ret = snap.analysis.inlay_hints(file_id, range)?;
+    Ok(ret.map(|inlays| {
+        inlays
+            .into_iter()
+            .map(|inlay| convert::to_inlay(&lmap, inlay))
+            .collect()
+    }))
 }
 
 pub(crate) fn document_symbol(
