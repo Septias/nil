@@ -26,5 +26,5 @@ in
     EOF
     export NIL_LOG=info
 
-    exec ${codium}/bin/codium --user-data-dir "$dir" "$@" /home/septias/coding/nixos-config
+    exec ${codium}/bin/codium --user-data-dir "$dir" "$@" ./test-data/
   ''
