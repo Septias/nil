@@ -276,7 +276,7 @@ pub(crate) fn to_inlay(line_map: &LineMap, inlay: InlayHintResult) -> InlayHint 
     let (line, col) = line_map.line_col_for_pos(position);
     InlayHint {
         position: Position::new(line, col),
-        label: ty.to_string().into(),
+        label: (": ".to_owned() + &ty.to_string()).into(),
         kind: None,
         text_edits: None,
         tooltip: None,
