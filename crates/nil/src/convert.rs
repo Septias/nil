@@ -3,15 +3,15 @@ use crate::{semantic_tokens, LineMap, Result, Vfs};
 use async_lsp::{ErrorCode, ResponseError};
 use ide::{
     Assist, AssistKind, CompletionItem, CompletionItemKind, Diagnostic, FileId, FilePos, FileRange,
-    HlRange, HlRelated, HoverResult, Link, LinkTarget, NameKind, Severity, SymbolTree, TextEdit,
-    WorkspaceEdit,
+    HlRange, HlRelated, HoverResult, InlayHintResult, Link, LinkTarget, NameKind, Severity,
+    SymbolTree, TextEdit, WorkspaceEdit,
 };
 use lsp_types::{
     self as lsp, CodeAction, CodeActionKind, CodeActionOrCommand, DiagnosticRelatedInformation,
     DiagnosticSeverity, DiagnosticTag, DocumentHighlight, DocumentHighlightKind, DocumentLink,
-    DocumentSymbol, Documentation, Hover, Location, MarkupContent, MarkupKind, NumberOrString,
-    Position, PrepareRenameResponse, Range, SemanticToken, SymbolKind, TextDocumentIdentifier,
-    TextDocumentPositionParams, Url,
+    DocumentSymbol, Documentation, Hover, InlayHint, Location, MarkupContent, MarkupKind,
+    NumberOrString, Position, PrepareRenameResponse, Range, SemanticToken, SymbolKind,
+    TextDocumentIdentifier, TextDocumentPositionParams, Url,
 };
 use nix_interop::DEFAULT_IMPORT_FILE;
 use std::sync::Arc;
@@ -268,6 +268,19 @@ pub(crate) fn to_hover(line_map: &LineMap, hover: HoverResult) -> Hover {
             kind: MarkupKind::Markdown,
             value: hover.markup,
         }),
+    }
+}
+
+pub(crate) fn to_inlay(line_map: &LineMap, inlay: InlayHintResult) -> InlayHint {
+    InlayHint {
+        position: todo!(),
+        label: todo!(),
+        kind: todo!(),
+        text_edits: todo!(),
+        tooltip: todo!(),
+        padding_left: todo!(),
+        padding_right: todo!(),
+        data: todo!(),
     }
 }
 
