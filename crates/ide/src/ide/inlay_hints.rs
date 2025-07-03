@@ -53,11 +53,13 @@ impl Collector<'_, '_> {
             };
             let name = self
                 .source_map
-                .name_for_node(AstPtr::new(&binding.syntax()))
-                .unwrap();
-            let ty = self.types.ty_for_name(name);
-            let pos = binding.syntax().text_range().start();
-            self.push_symbol(ty, pos)
+                .name_for_node(AstPtr::new(&binding.syntax()));
+
+            if let Some(name) = name {
+                let ty = self.types.ty_for_name(name);
+                let pos = binding.syntax().text_range().end();
+                self.push_symbol(ty, pos)
+            }
             // match binding {
             //     ast::Attr::Dynamic(dynamic) => todo!(),
             //     ast::Attr::Name(_name) => {
@@ -72,13 +74,11 @@ impl Collector<'_, '_> {
 mod tests {
     use super::*;
     use crate::tests::TestDB;
-    use expect_test::{expect, Expect};
 
-    #[track_caller]
-    fn check(fixture: &str, expect: Expect) {
-        let (db, file) = TestDB::single_file(fixture).unwrap();
+    #[test]
+    fn inlay_simple() {
+        let (db, file) = TestDB::single_file("let a = 2 in {}").unwrap();
         let syms = inlay_hints(&db, file);
-        let mut got = String::new();
-        expect.assert_eq(&got);
+        println!("{syms:?}")
     }
 }
