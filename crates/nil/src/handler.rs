@@ -188,12 +188,11 @@ pub(crate) fn inlay_hint(
     let (file_id, _) = convert::from_file(&snap.vfs(), &params.text_document)?;
     let (lmap, range) = convert::from_range(&snap.vfs(), file_id, params.range)?;
     let ret = snap.analysis.inlay_hints(file_id, range)?;
-    Ok(ret.map(|inlays| {
-        inlays
-            .into_iter()
+    Ok(Some(
+        ret.into_iter()
             .map(|inlay| convert::to_inlay(&lmap, inlay))
-            .collect()
-    }))
+            .collect(),
+    ))
 }
 
 pub(crate) fn document_symbol(

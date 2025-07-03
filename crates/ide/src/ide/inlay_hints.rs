@@ -1,22 +1,20 @@
-use std::sync::Arc;
-
-use crate::def::{AstPtr, NameId};
+use crate::def::AstPtr;
 use crate::ty::Ty;
-use crate::{DefDatabase, FileId, FilePos, InferenceResult, ModuleSourceMap, TyDatabase};
+use crate::{FileId, InferenceResult, ModuleSourceMap, TyDatabase};
+use std::sync::Arc;
 use syntax::ast::{self, AstNode};
 use syntax::rowan::WalkEvent;
-use syntax::{SyntaxNode, TextRange};
+use syntax::{SyntaxNode, TextSize};
 
 #[derive(Debug)]
 pub struct InlayHintResult {
-    position: FilePos,
-    ty: Ty,
+    pub position: TextSize,
+    pub ty: Ty,
 }
 
 pub(crate) fn inlay_hints(db: &dyn TyDatabase, file_id: FileId) -> Vec<InlayHintResult> {
     let parse = db.parse(file_id);
     parse.syntax_node().kind();
-    let nameres = db.name_resolution(file_id);
     let source_map = db.source_map(file_id);
     let mut symbols = Vec::new();
     let infer = db.infer(file_id);
@@ -37,32 +35,35 @@ struct Collector<'a, 'b> {
 }
 
 impl Collector<'_, '_> {
-    fn push_symbol(&mut self, ty: Ty, position: FilePos) {
-        self.diagnostics.push(InlayHintResult {
-            position: todo!(),
-            ty: todo!(),
-        })
+    fn push_symbol(&mut self, ty: Ty, position: TextSize) {
+        self.diagnostics.push(InlayHintResult { position, ty })
     }
 
     fn collect_node(&mut self, n: &SyntaxNode) {
         let mut iter = n.preorder();
-        let mut last_is_path_value = false;
         while let Some(event) = iter.next() {
             let n = match event {
                 WalkEvent::Enter(n) => n,
-                WalkEvent::Leave(n) => {
-                    last_is_path_value = ast::AttrpathValue::can_cast(n.kind());
+                WalkEvent::Leave(_) => {
                     continue;
                 }
             };
             let Some(binding) = ast::Attr::cast(n) else {
                 continue;
             };
-            match binding {
-                ast::Attr::Dynamic(dynamic) => todo!(),
-                ast::Attr::Name(name) => {}
-                ast::Attr::String(_) => todo!(),
-            }
+            let name = self
+                .source_map
+                .name_for_node(AstPtr::new(&binding.syntax()))
+                .unwrap();
+            let ty = self.types.ty_for_name(name);
+            let pos = binding.syntax().text_range().start();
+            self.push_symbol(ty, pos)
+            // match binding {
+            //     ast::Attr::Dynamic(dynamic) => todo!(),
+            //     ast::Attr::Name(_name) => {
+            //     }
+            //     ast::Attr::String(_) => todo!(),
+            // }
         }
     }
 }
@@ -72,7 +73,6 @@ mod tests {
     use super::*;
     use crate::tests::TestDB;
     use expect_test::{expect, Expect};
-    use std::fmt::Write;
 
     #[track_caller]
     fn check(fixture: &str, expect: Expect) {

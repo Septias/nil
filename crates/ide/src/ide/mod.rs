@@ -199,9 +199,9 @@ impl Analysis {
     pub fn inlay_hints(
         &self,
         file: FileId,
-        range: TextRange,
-    ) -> Cancellable<Option<Vec<InlayHintResult>>> {
-        self.with_db(|db| inlay_hints::inlay_hints(db, file, range))
+        _range: TextRange,
+    ) -> Cancellable<Vec<InlayHintResult>> {
+        self.with_db(|db| inlay_hints::inlay_hints(db, file))
     }
 
     pub fn symbol_hierarchy(&self, file: FileId) -> Cancellable<Vec<SymbolTree>> {
