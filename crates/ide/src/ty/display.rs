@@ -109,17 +109,17 @@ impl fmt::Display for TyDisplay<'_> {
                     " }".fmt(f)
                 }
             }
-            Ty::Top => todo!(),
-            Ty::Bottom => todo!(),
-            Ty::Null => todo!(),
-            Ty::Undefined => todo!(),
-            Ty::Var(_) => todo!(),
-            Ty::Optional(_) => todo!(),
+            Ty::Top => "T".fmt(f),
+            Ty::Bottom => "⊥".fmt(f),
+            Ty::Null => "Null".fmt(f),
+            Ty::Undefined => "Undefined".fmt(f),
+            Ty::Var(_) => "Var".fmt(f),
+            Ty::Optional(_) => "Optional".fmt(f),
             Ty::Pattern(_, _) => todo!(),
             Ty::Union(_, _) => todo!(),
             Ty::Inter(_, _) => todo!(),
-            Ty::Recursive(_, _) => todo!(),
-            Ty::Number => todo!(),
+            Ty::Recursive(_, _) => "Recursive".fmt(f),
+            Ty::Number => "Number".fmt(f),
         }
     }
 }
