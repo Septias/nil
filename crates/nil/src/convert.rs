@@ -272,15 +272,17 @@ pub(crate) fn to_hover(line_map: &LineMap, hover: HoverResult) -> Hover {
 }
 
 pub(crate) fn to_inlay(line_map: &LineMap, inlay: InlayHintResult) -> InlayHint {
+    let InlayHintResult { position, ty } = inlay;
+    let (line, col) = line_map.line_col_for_pos(position);
     InlayHint {
-        position: todo!(),
-        label: todo!(),
-        kind: todo!(),
-        text_edits: todo!(),
-        tooltip: todo!(),
-        padding_left: todo!(),
-        padding_right: todo!(),
-        data: todo!(),
+        position: Position::new(line, col),
+        label: ty.to_string().into(),
+        kind: None,
+        text_edits: None,
+        tooltip: None,
+        padding_left: None,
+        padding_right: None,
+        data: None,
     }
 }
 
