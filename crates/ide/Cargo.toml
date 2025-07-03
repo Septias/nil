@@ -21,6 +21,7 @@ smallvec = { version = "1.10.0", features = ["const_generics", "union"] }
 smol_str = "0.3"
 syntax = { path = "../syntax" }
 url = "2.3.1"
+strum = "*"
 
 [dev-dependencies]
 anyhow = "1.0.60"
