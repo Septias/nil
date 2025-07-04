@@ -137,10 +137,10 @@ pub(crate) fn liveness_check_query(db: &dyn Database, file_id: FileId) -> Arc<Li
                 },
                 Expr::LetIn(bindings, body) => {
                     // Pre-mark all let-binding.
-                    for &(name, value) in bindings.statics.iter() {
+                    for &(name, value) in bindings.attrs.iter() {
                         let e = match value {
                             BindingValue::Expr(e) | BindingValue::Inherit(e) => e,
-                            BindingValue::InheritFrom(i) => bindings.inherit_froms[i],
+                            BindingValue::InheritFrom(i) => bindings.inhert[i],
                         };
                         discovered_let_rhs.insert(name, e);
                     }
@@ -205,7 +205,7 @@ pub(crate) fn liveness_check_query(db: &dyn Database, file_id: FileId) -> Arc<Li
             }
             Expr::RecAttrset(bindings)
                 if bindings
-                    .statics
+                    .attrs
                     .iter()
                     .all(|&(name, _)| visited_defs.get(name).is_none()) =>
             {

@@ -109,7 +109,7 @@ impl LowerCtx<'_> {
                 let cond = self.lower_expr_opt(e.condition());
                 let then_body = self.lower_expr_opt(e.then_body());
                 let else_body = self.lower_expr_opt(e.else_body());
-                self.alloc_expr(Expr::IfThenElse(cond, then_body, else_body), ptr)
+                self.alloc_expr(Expr::Conditional(cond, then_body, else_body), ptr)
             }
             ast::Expr::With(e) => {
                 let env = self.lower_expr_opt(e.environment());
@@ -146,7 +146,7 @@ impl LowerCtx<'_> {
             }
             ast::Expr::LetIn(e) => {
                 let bindings = MergingSet::desugar(self, NameKind::LetIn, &e).finish(self);
-                if bindings.statics.is_empty() && bindings.inherit_froms.is_empty() {
+                if bindings.attrs.is_empty() && bindings.inhert.is_empty() {
                     let let_tok_range = e
                         .let_token()
                         .map_or(e.syntax().text_range(), |tok| tok.text_range());
@@ -572,7 +572,7 @@ impl MergingSet {
 
     fn finish(self, ctx: &mut LowerCtx) -> Bindings {
         Bindings {
-            statics: self
+            attrs: self
                 .statics
                 .into_values()
                 .map(|entry| {
@@ -583,7 +583,7 @@ impl MergingSet {
                     (entry.name, value)
                 })
                 .collect(),
-            inherit_froms: self.inherit_froms.into(),
+            inhert: self.inherit_froms.into(),
             dynamics: self.dynamics.into(),
         }
     }

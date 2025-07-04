@@ -405,7 +405,7 @@ impl Context<'_> {
 
         let prefix = self.prefix;
         bindings
-            .statics
+            .attrs
             .iter()
             .filter(|(_, v)| matches!(v, BindingValue::Expr(_)))
             .map(|&(name, _)| self.module[name].text.clone())

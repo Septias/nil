@@ -142,7 +142,7 @@ impl ModuleScopes {
     ) -> ScopeId {
         let mut defs = HashMap::default();
 
-        for &(name, value) in bindings.statics.iter() {
+        for &(name, value) in bindings.attrs.iter() {
             if module[name].kind.is_definition() {
                 defs.insert(module[name].text.clone(), name);
             }
@@ -163,7 +163,7 @@ impl ModuleScopes {
             })
         };
 
-        for &(_, value) in bindings.statics.iter() {
+        for &(_, value) in bindings.attrs.iter() {
             match value {
                 // Traversed before.
                 BindingValue::Inherit(_) |
@@ -174,7 +174,7 @@ impl ModuleScopes {
                 }
             }
         }
-        for &e in bindings.inherit_froms.iter() {
+        for &e in bindings.inhert.iter() {
             self.traverse_expr(module, e, scope);
         }
         for &(k, v) in bindings.dynamics.iter() {
@@ -261,11 +261,11 @@ impl NameResolution {
             else {
                 continue;
             };
-            for &(name, value) in bindings.statics.iter() {
+            for &(name, value) in bindings.attrs.iter() {
                 let BindingValue::InheritFrom(i) = value else {
                     continue;
                 };
-                let from_expr = bindings.inherit_froms[i];
+                let from_expr = bindings.inhert[i];
                 if let Some(Some(ResolveResult::Builtin("builtins"))) = resolve_map.get(&from_expr)
                 {
                     if ALL_BUILTINS.contains_key(&module[name].text) {

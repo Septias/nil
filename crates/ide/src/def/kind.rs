@@ -63,7 +63,7 @@ fn parse_flake_nix(module: &Module) -> ModuleKind {
     let mut param_inputs = HashMap::new();
     let mut outputs_expr = None;
     if let Expr::Attrset(flake_set) | Expr::RecAttrset(flake_set) = &module[module.entry_expr()] {
-        for &(name_id, value) in flake_set.statics.iter() {
+        for &(name_id, value) in flake_set.attrs.iter() {
             let BindingValue::Expr(value_expr) = value else {
                 continue;
             };
@@ -74,7 +74,7 @@ fn parse_flake_nix(module: &Module) -> ModuleKind {
                         continue;
                     };
                     explicit_inputs = inputs
-                        .statics
+                        .attrs
                         .iter()
                         .map(|&(input_name_id, _)| {
                             (module[input_name_id].text.clone(), input_name_id)
@@ -135,7 +135,7 @@ fn guess(module: &Module) -> ModuleKind {
         then {
             // If it has special fields, it is a NixOS module definition.
             if bindings
-                .statics
+                .attrs
                 .iter()
                 .any(|&(name, _)| matches!(&*module[name].text, "options" | "config" | "meta")) {
                 return ModuleKind::ConfigModule { lambda_expr: entry_expr };

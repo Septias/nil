@@ -242,9 +242,16 @@ pub enum Expr {
     With(ExprId, ExprId),
     Assert(ExprId, ExprId),
     IfThenElse(ExprId, ExprId, ExprId),
-    Binary(Option<BinaryOp>, ExprId, ExprId),
+    Binary {
+        op: BinaryOp,
+        lhs: ExprId,
+        rhs: ExprId,
+    },
     Apply(ExprId, ExprId),
-    Unary(Option<UnaryOp>, ExprId),
+    Unary {
+        rhs: Option<UnaryOp>,
+        ops: ExprId,
+    },
     HasAttr(ExprId, Attrpath),
     Select(ExprId, Attrpath, Option<ExprId>),
     StringInterpolation(Box<[ExprId]>),
@@ -350,9 +357,9 @@ pub type Attrpath = Box<[ExprId]>;
 /// List of bindings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bindings {
-    pub statics: Box<[(NameId, BindingValue)]>,
-    pub inherit_froms: Box<[ExprId]>,
-    pub dynamics: Box<[(ExprId, ExprId)]>,
+    pub attrs: Box<[(NameId, BindingValue)]>,
+    pub inhert: Box<[ExprId]>,
+    pub is_recursive: Bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -364,13 +371,13 @@ pub enum BindingValue {
 
 impl Bindings {
     pub fn walk_child_exprs(&self, mut f: impl FnMut(ExprId)) {
-        for (_, value) in self.statics.iter() {
+        for (_, value) in self.attrs.iter() {
             match value {
                 BindingValue::Inherit(e) | BindingValue::Expr(e) => f(*e),
                 BindingValue::InheritFrom(_idx) => {}
             }
         }
-        for &e in self.inherit_froms.iter() {
+        for &e in self.inhert.iter() {
             f(e);
         }
         for &(k, v) in self.dynamics.iter() {
@@ -381,7 +388,7 @@ impl Bindings {
 
     // FIXME: This is currently O(n).
     pub fn get(&self, name: &str, module: &Module) -> Option<BindingValue> {
-        self.statics
+        self.attrs
             .iter()
             .find_map(|&(name_id, value)| (module[name_id].text == name).then_some(value))
     }
