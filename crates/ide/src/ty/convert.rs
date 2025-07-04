@@ -22,6 +22,7 @@ pub(crate) fn options_to_config_ty(db: &dyn TyDatabase) -> Ty {
 }
 
 /// Create a [Ty] from [OptionTy].
+/// [OptionTy] was automically retrieved from nixpks option declaration.
 fn from_raw_ty(ty: &OptionTy) -> Ty {
     match ty {
         OptionTy::Any => ty!(?),
