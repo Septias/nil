@@ -3,12 +3,15 @@ use super::{AttrSource, known};
 use crate::def::{
     BindingValue, Bindings, Expr, ExprId, Literal, NameId, NameResolution, ResolveResult,
 };
-use crate::{FileId, Module};
+use crate::{FileId, Module, ModuleSourceMap};
 use la_arena::ArenaMap;
 use salsa::Database;
 use smol_str::SmolStr;
+use std::cell::RefCell;
 use std::collections::btree_map::{BTreeMap, Entry};
+use std::collections::{HashMap, HashSet};
 use std::mem;
+use std::rc::Rc;
 use std::sync::Arc;
 use syntax::ast::{BinaryOpKind, UnaryOpKind};
 
@@ -23,26 +26,59 @@ impl AttrSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TyVar(u32);
 
+/// A single identifier.
+/// The name should be a debrujin index and the path is used for set accesses.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Var {
+    pub level: usize,
+    pub id: usize,
+    pub lower_bounds: Rc<RefCell<Vec<Ty>>>,
+    pub upper_bounds: Rc<RefCell<Vec<Ty>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PolymorphicType {
+    pub body: Ty,
+    pub level: usize,
+}
+
+impl PolymorphicType {
+    pub fn new(body: Ty, level: usize) -> Self {
+        Self { body, level }
+    }
+}
+
 /// A type used in inference.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Ty {
+    Top,
+    Bottom,
     Unknown,
 
-    // We won't wanna infer to `null` before supporting union types.
-    // It would contain no information.
-    // Null,
     Bool,
-    Int,
-    Float,
     String,
+    Number,
     Path,
+    Null,
+    Undefined,
 
-    List(TyVar),
-    Lambda(TyVar, TyVar),
-    // TODO: Add support for `rest` similar to super::Attrset.
-    Attrset(Attrset),
+    Var(Var),
+    Function(Box<Ty>, Box<Ty>),
+    List(Vec<Ty>),
+    Record(HashMap<String, Ty>),
+    Optional(Box<Ty>),
+    Pattern(HashMap<String, (Ty, Option<Ty>)>, bool),
 
-    External(super::Ty),
+    // Complex Tys only created by simplification
+    Union(Box<Ty>, Box<Ty>),
+    Inter(Box<Ty>, Box<Ty>),
+    Recursive(Var, Box<Ty>),
+}
+
+impl std::hash::Hash for Ty {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        todo!()
+    }
 }
 
 impl Ty {
@@ -88,31 +124,28 @@ pub(crate) fn infer_query(db: &dyn Database, file: FileId) -> Arc<InferenceResul
 pub(crate) fn infer_with(
     db: &dyn Database,
     file: FileId,
+    db: &dyn TyDatabase,
+    file_id: FileId,
     expect_ty: Option<super::Ty>,
 ) -> Arc<InferenceResult> {
-    let module = db.module(file);
-    let nameres = db.name_resolution(file);
+    let module = db.module(file_id);
+    let nameres = db.name_resolution(file_id);
+    let source_map = db.source_map(file_id);
     let table = UnionFind::new(module.names().len() + module.exprs().len(), |_| Ty::Unknown);
     let mut ctx = InferCtx {
         module: &module,
         nameres: &nameres,
-        table,
+        source_map: &source_map,
+        with: vec![],
     };
-    let ty = ctx.infer_expr(module.entry_expr());
-    if let Some(expect_ty) = expect_ty {
-        ctx.unify_var_ty(ty, Ty::External(expect_ty));
-    }
     Arc::new(ctx.finish())
 }
 
 struct InferCtx<'db> {
     module: &'db Module,
     nameres: &'db NameResolution,
-
-    /// The arena for both unification and interning.
-    /// First `module.names().len() + module.exprs().len()` elements are types of each names and
-    /// exprs, to allow recursive definition.
-    table: UnionFind<Ty>,
+    source_map: &'db ModuleSourceMap,
+    with: Vec<Ty>,
 }
 
 impl InferCtx<'_> {
@@ -145,382 +178,860 @@ impl InferCtx<'_> {
     }
 
     /// Infer the type of an expression.
-    fn infer_expr(&mut self, e: ExprId) -> TyVar {
-        let ty = self.infer_expr_inner(e);
-        let placeholder_ty = self.ty_for_expr(e);
-        self.unify_var(placeholder_ty, ty);
+    fn infer_expr(&mut self, e: ExprId) -> Ty {
+        let ty = self.type_term(e, 0);
         ty
     }
 
-    /// Subroutine of [infer_expr].
-    fn infer_expr_inner(&mut self, e: ExprId) -> TyVar {
-        match &self.module[e] {
-            Expr::Missing => self.new_ty_var(),
-            Expr::Reference(_) => match self.nameres.get(e) {
-                None => self.new_ty_var(),
-                Some(res) => match res {
-                    &ResolveResult::Definition(name) => self.ty_for_name(name),
-                    ResolveResult::WithExprs(_) => {
-                        // TODO: With names.
-                        self.new_ty_var()
-                    }
-                    ResolveResult::Builtin(name) => {
-                        match known::BUILTINS.as_attrset().unwrap().get(name) {
-                            None => self.new_ty_var(),
-                            Some(ty) => self.import_external(ty.clone()),
-                        }
-                    }
-                },
-            },
-            Expr::Literal(lit) => match lit {
-                Literal::Int(_) => Ty::Int,
-                Literal::Float(_) => Ty::Float,
-                Literal::String(_) => Ty::String,
-                Literal::Path(_) => Ty::Path,
-            }
-            .intern(self),
-            Expr::Lambda(name, pat, body) => {
-                let param_ty = self.new_ty_var();
+    pub fn constrain(&mut self, lhs: &Ty, rhs: &Ty) {
+        self.constrain_inner(lhs, rhs, &mut HashSet::new())
+    }
 
-                if let Some(name) = *name {
-                    self.unify_var(param_ty, self.ty_for_name(name));
-                }
-
-                if let Some(pat) = pat {
-                    self.unify_var_ty(param_ty, Ty::Attrset(Attrset::default()));
-                    for &(name, default_expr) in pat.fields.iter() {
-                        // Always infer default_expr.
-                        let default_ty = default_expr.map(|e| self.infer_expr(e));
-                        let Some(name) = name else { continue };
-                        let name_ty = self.ty_for_name(name);
-                        if let Some(default_ty) = default_ty {
-                            self.unify_var(name_ty, default_ty);
-                        }
-                        let field_text = self.module[name].text.clone();
-                        let param_field_ty = self.infer_set_field(
-                            param_ty,
-                            Some(field_text),
-                            AttrSource::Name(name),
-                        );
-                        self.unify_var(param_field_ty, name_ty);
-                    }
-                }
-
-                let body_ty = self.infer_expr(*body);
-                Ty::Lambda(param_ty, body_ty).intern(self)
-            }
-            &Expr::With(env, body) => {
-                self.infer_expr(env);
-                self.infer_expr(body)
-            }
-            &Expr::Assert(cond, body) => {
-                self.infer_expr(cond);
-                self.infer_expr(body)
-            }
-            &Expr::IfThenElse(cond, then, else_) => {
-                let cond_ty = self.infer_expr(cond);
-                self.unify_var_ty(cond_ty, Ty::Bool);
-                let then_ty = self.infer_expr(then);
-                let else_ty = self.infer_expr(else_);
-                self.unify_var(then_ty, else_ty);
-                then_ty
-            }
-            &Expr::Apply(lam, arg)
-            | &Expr::Binary(Some(BinaryOpKind::PipeRight), arg, lam)
-            | &Expr::Binary(Some(BinaryOpKind::PipeLeft), lam, arg) => {
-                let param_ty = self.new_ty_var();
-                let ret_ty = self.new_ty_var();
-                let lam_ty = self.infer_expr(lam);
-                self.unify_var_ty(lam_ty, Ty::Lambda(param_ty, ret_ty));
-                let arg_ty = self.infer_expr(arg);
-                self.unify_var(arg_ty, param_ty);
-                ret_ty
-            }
-            &Expr::Binary(op, lhs, rhs) => {
-                let lhs_ty = self.infer_expr(lhs);
-                let rhs_ty = self.infer_expr(rhs);
-
-                let Some(op) = op else {
-                    return self.new_ty_var();
-                };
-
-                match op {
-                    BinaryOpKind::Equal | BinaryOpKind::NotEqual => Ty::Bool.intern(self),
-                    BinaryOpKind::Imply | BinaryOpKind::Or | BinaryOpKind::And => {
-                        self.unify_var_ty(lhs_ty, Ty::Bool);
-                        self.unify_var_ty(rhs_ty, Ty::Bool);
-                        Ty::Bool.intern(self)
-                    }
-                    BinaryOpKind::Less
-                    | BinaryOpKind::Greater
-                    | BinaryOpKind::LessEqual
-                    | BinaryOpKind::GreaterEqual => {
-                        self.unify_var(lhs_ty, rhs_ty);
-                        Ty::Bool.intern(self)
-                    }
-                    // TODO: Polymorphism.
-                    BinaryOpKind::Add
-                    | BinaryOpKind::Sub
-                    | BinaryOpKind::Mul
-                    | BinaryOpKind::Div => {
-                        // TODO: Arguments have type: int | float.
-                        self.unify_var(lhs_ty, rhs_ty);
-                        lhs_ty
-                    }
-                    BinaryOpKind::Update => {
-                        self.unify_var_ty(lhs_ty, Ty::Attrset(Attrset::default()));
-                        self.unify_var_ty(rhs_ty, Ty::Attrset(Attrset::default()));
-                        self.unify_var(lhs_ty, rhs_ty);
-                        lhs_ty
-                    }
-                    BinaryOpKind::Concat => {
-                        let ret_ty = Ty::List(self.new_ty_var()).intern(self);
-                        self.unify_var(lhs_ty, ret_ty);
-                        self.unify_var(rhs_ty, ret_ty);
-                        ret_ty
-                    }
-                    // Already handled by the outer match.
-                    BinaryOpKind::PipeLeft | BinaryOpKind::PipeRight => unreachable!(),
-                }
-            }
-            &Expr::Unary(op, arg) => {
-                let arg_ty = self.infer_expr(arg);
-                match op {
-                    None => self.new_ty_var(),
-                    Some(UnaryOpKind::Not) => {
-                        self.unify_var_ty(arg_ty, Ty::Bool);
-                        Ty::Bool.intern(self)
-                    }
-                    // TODO: The argument is int | bool.
-                    Some(UnaryOpKind::Negate) => arg_ty,
-                }
-            }
-            Expr::HasAttr(set_expr, path) => {
-                // TODO: Store the information of referenced paths somehow.
-                self.infer_expr(*set_expr);
-                for &attr in path.iter() {
-                    let attr_ty = self.infer_expr(attr);
-                    self.unify_var_ty(attr_ty, Ty::String);
-                }
-                Ty::Bool.intern(self)
-            }
-            Expr::Select(set_expr, path, default_expr) => {
-                let set_ty = self.infer_expr(*set_expr);
-                let ret_ty = path.iter().fold(set_ty, |set_ty, &attr| {
-                    let attr_ty = self.infer_expr(attr);
-                    self.unify_var_ty(attr_ty, Ty::String);
-                    let opt_key = match &self.module[attr] {
-                        Expr::Literal(Literal::String(key)) => Some(key.clone()),
-                        _ => None,
-                    };
-                    self.infer_set_field(set_ty, opt_key, AttrSource::Unknown)
-                });
-                if let Some(default_expr) = *default_expr {
-                    let default_ty = self.infer_expr(default_expr);
-                    self.unify_var(ret_ty, default_ty);
-                }
-                ret_ty
-            }
-            Expr::PathInterpolation(parts) => {
-                for &part in parts.iter() {
-                    let ty = self.infer_expr(part);
-                    // FIXME: Parts are coerce-able to string.
-                    self.unify_var_ty(ty, Ty::String);
-                }
-                Ty::Path.intern(self)
-            }
-            Expr::StringInterpolation(parts) => {
-                for &part in parts.iter() {
-                    let ty = self.infer_expr(part);
-                    // FIXME: Parts are coerce-able to string.
-                    self.unify_var_ty(ty, Ty::String);
-                }
-                Ty::String.intern(self)
-            }
-            Expr::List(elems) => {
-                let expect_elem_ty = self.new_ty_var();
-                let ret_ty = Ty::List(expect_elem_ty).intern(self);
-                for &elem in elems.iter() {
-                    let elem_ty = self.infer_expr(elem);
-                    self.unify_var(elem_ty, expect_elem_ty);
-                }
-                ret_ty
-            }
-            Expr::LetIn(bindings, body) => {
-                self.infer_bindings(bindings);
-                self.infer_expr(*body)
-            }
-            Expr::Attrset(bindings) | Expr::RecAttrset(bindings) => {
-                let set = self.infer_bindings(bindings);
-                Ty::Attrset(set).intern(self)
-            }
-            Expr::LetAttrset(bindings) => {
-                let set = self.infer_bindings(bindings);
-                let set_ty = Ty::Attrset(set).intern(self);
-                self.infer_set_field(set_ty, Some("body".into()), AttrSource::Unknown)
-            }
-            Expr::CurPos => self.import_external(known::CUR_POS.clone()),
+    fn constrain_inner<'a>(&mut self, lhs: &'a Ty, rhs: &'a Ty, cache: &mut HashSet<(Ty, Ty)>) {
+        if lhs == rhs {
+            return;
         }
-    }
+        let lhs_rhs = (lhs.clone(), rhs.clone());
 
-    /// Infer the type of a binding by joining inherits and statics into field values.
-    fn infer_bindings(&mut self, bindings: &Bindings) -> Attrset {
-        let inherit_from_tys = bindings
-            .inherit_froms
-            .iter()
-            .map(|&from_expr| self.infer_expr(from_expr))
-            .collect::<Vec<_>>();
-
-        let mut fields = BTreeMap::new();
-        for &(name, value) in bindings.statics.iter() {
-            let name_ty = self.ty_for_name(name);
-            let name_text = self.module[name].text.clone();
-            let value_ty = match value {
-                BindingValue::Inherit(e) | BindingValue::Expr(e) => self.infer_expr(e),
-                BindingValue::InheritFrom(i) => self.infer_set_field(
-                    inherit_from_tys[i],
-                    Some(name_text.clone()),
-                    AttrSource::Name(name),
-                ),
-            };
-            self.unify_var(name_ty, value_ty);
-            let src = AttrSource::Name(name);
-            fields.insert(name_text, (value_ty, src));
-        }
-
-        let dyn_ty = (!bindings.dynamics.is_empty()).then(|| {
-            let dyn_ty = self.new_ty_var();
-            for &(k, v) in bindings.dynamics.iter() {
-                let name_ty = self.infer_expr(k);
-                self.unify_var_ty(name_ty, Ty::String);
-                let value_ty = self.infer_expr(v);
-                self.unify_var(value_ty, dyn_ty);
-            }
-            dyn_ty
-        });
-
-        Attrset { fields, dyn_ty }
-    }
-
-    /// `field` is `None` for dynamic fields.
-    fn infer_set_field(&mut self, set_ty: TyVar, field: Option<SmolStr>, src: AttrSource) -> TyVar {
-        let next_ty = TyVar(self.table.len() as u32);
-        match self.table.get_mut(set_ty.0) {
-            Ty::Attrset(set) => match field {
-                Some(field) => match set.fields.entry(field) {
-                    Entry::Occupied(mut ent) => {
-                        let (ty, prev_src) = ent.get_mut();
-                        prev_src.unify(src);
-                        return *ty;
-                    }
-                    Entry::Vacant(ent) => {
-                        ent.insert((next_ty, src));
-                    }
-                },
-                None => match set.dyn_ty {
-                    Some(dyn_ty) => return dyn_ty,
-                    None => set.dyn_ty = Some(next_ty),
-                },
-            },
-            Ty::External(super::Ty::Attrset(set)) => match field {
-                Some(field) => {
-                    if let Some(ty) = set.get(&field).cloned() {
-                        return self.import_external(ty);
-                    }
-                }
-                None => {
-                    if let Some(rest) = &set.rest {
-                        let rest_ty = rest.0.clone();
-                        return self.import_external(rest_ty);
-                    }
-                }
-            },
-            k @ Ty::Unknown => {
-                *k = Ty::Attrset(match field {
-                    Some(field) => Attrset {
-                        fields: [(field, (next_ty, src))].into_iter().collect(),
-                        dyn_ty: None,
-                    },
-                    None => Attrset {
-                        fields: BTreeMap::new(),
-                        dyn_ty: Some(next_ty),
-                    },
-                });
-            }
-            _ => {}
-        }
-        self.new_ty_var()
-    }
-
-    fn unify_var_ty(&mut self, var: TyVar, rhs: Ty) {
-        let lhs = mem::replace(self.table.get_mut(var.0), Ty::Unknown);
-        let ret = self.unify(lhs, rhs);
-        *self.table.get_mut(var.0) = ret;
-    }
-
-    fn unify_var(&mut self, lhs: TyVar, rhs: TyVar) {
-        let (var, rhs) = self.table.unify(lhs.0, rhs.0);
-        let Some(rhs) = rhs else { return };
-        self.unify_var_ty(TyVar(var), rhs);
-    }
-
-    fn unify(&mut self, lhs: Ty, rhs: Ty) -> Ty {
         match (lhs, rhs) {
-            (Ty::Unknown, other) | (other, Ty::Unknown) => other,
-            (Ty::List(a), Ty::List(b)) => {
-                self.unify_var(a, b);
-                Ty::List(a)
+            (Ty::Var(..), _) | (_, Ty::Var(..)) => {
+                if cache.contains(&lhs_rhs) {
+                    return;
+                }
+                cache.insert(lhs_rhs.clone());
             }
-            (Ty::Lambda(arg1, ret1), Ty::Lambda(arg2, ret2)) => {
-                self.unify_var(arg1, arg2);
-                self.unify_var(ret1, ret2);
-                Ty::Lambda(arg1, ret1)
+            _ => (),
+        }
+
+        match (lhs, rhs) {
+            (Ty::Bool, Ty::Bool)
+            | (Ty::Number, Ty::Number)
+            | (Ty::String, Ty::String)
+            | (Ty::Path, Ty::Path)
+            | (Ty::Null, Ty::Null)
+            | (Ty::Undefined, _) => (),
+
+            (Ty::Function(l0, r0), Ty::Function(l1, r1)) => {
+                self.constrain_inner(l1, l0, cache);
+                self.constrain_inner(r0, r1, cache);
             }
-            (Ty::Attrset(mut a), Ty::Attrset(b)) => {
-                for (field, (ty2, src2)) in b.fields {
-                    match a.fields.entry(field) {
-                        Entry::Vacant(ent) => {
-                            ent.insert((ty2, src2));
-                        }
-                        Entry::Occupied(mut ent) => {
-                            let (ty1, src1) = ent.get_mut();
-                            src1.unify(src2);
-                            self.unify_var(*ty1, ty2);
+
+            (Ty::Record(fs0), Ty::Record(fs1)) => {
+                for (n1, t1) in fs1 {
+                    match fs0.iter().find(|(n0, _)| *n0 == n1) {
+                        Some((_, t0)) => self.constrain_inner(t0, t1, cache),
+                        None => {
+                            todo!()
                         }
                     }
                 }
-                Ty::Attrset(a)
             }
-            (Ty::External(external), local) | (local, Ty::External(external)) => {
-                match (local, &external) {
-                    (Ty::Lambda(arg1, ret1), super::Ty::Lambda(arg2, ret2)) => {
-                        let arg2 = self.import_external(super::Ty::clone(arg2));
-                        let ret2 = self.import_external(super::Ty::clone(ret2));
-                        self.unify_var(arg1, arg2);
-                        self.unify_var(ret1, ret2);
-                    }
-                    (Ty::Attrset(a), super::Ty::Attrset(b)) => {
-                        let rest_ty_var = b
-                            .rest
-                            .as_ref()
-                            .map(|rest| self.import_external(rest.0.clone()));
-                        for (field, (ty, _)) in &a.fields {
-                            if let Some(field_ty) = b.get(field) {
-                                let var = self.import_external(field_ty.clone());
-                                self.unify_var(*ty, var);
-                            } else if let Some(var) = rest_ty_var {
-                                self.unify_var(*ty, var);
+
+            (Ty::Record(rcd), Ty::Pattern(pat, wildcart)) => {
+                if *wildcart {
+                    for (pat, (t1, optional)) in pat.iter() {
+                        match rcd.iter().find(|(n0, _)| *n0 == pat) {
+                            Some((_, t0)) => self.constrain_inner(t0, t1, cache),
+                            None => {
+                                if optional.is_none() {
+                                    // return Err(InferError::MissingRecordField {
+                                    //     field: pat.clone(),
+                                    // });
+                                    todo!()
+                                }
                             }
                         }
-                        if let (Some(dyn_ty_var), Some(var)) = (a.dyn_ty, rest_ty_var) {
-                            self.unify_var(dyn_ty_var, var);
+                    }
+                } else {
+                    let mut keys = rcd.iter().map(|(n, _)| n).collect::<HashSet<_>>();
+                    for (n1, (t1, optional)) in pat.iter() {
+                        match rcd.iter().find(|(n0, _)| *n0 == n1) {
+                            Some((_, t0)) => {
+                                if let Some(opt) = optional {
+                                    self.constrain_inner(t0, opt, cache);
+                                }
+                                self.constrain_inner(t0, t1, cache);
+                                keys.remove(n1);
+                            }
+                            None => {
+                                if optional.is_none() {
+                                    // return Err(InferError::MissingRecordField {
+                                    //     field: n1.clone(),
+                                    // });
+                                    todo!()
+                                }
+                            }
                         }
                     }
-                    _ => {}
+                    if !keys.is_empty() {
+                        return Err(InferError::TooManyField {
+                            field: keys.into_iter().next().unwrap().clone(),
+                        });
+                    }
                 }
-                Ty::External(external)
             }
-            (lhs, _) => lhs,
+
+            (Ty::Optional(o1), Ty::Optional(o0)) => {
+                constrain_inner(context, o0, o1, cache)?;
+            }
+
+            (Ty::List(ls1), Ty::List(ls2)) if ls1.len() == 1 && ls2.len() == 1 => {
+                constrain_inner(context, &ls1[0], &ls2[0], cache)?;
+            }
+
+            // application
+            // function constraints
+            // selection
+            (Ty::Var(lhs), rhs) if rhs.level() <= lhs.level => {
+                lhs.upper_bounds.borrow_mut().push(rhs.clone());
+                for lower_bound in lhs.lower_bounds.borrow().iter() {
+                    constrain_inner(context, lower_bound, rhs, cache)?;
+                }
+            }
+
+            (Ty::Pattern(pat, _), rhs @ Ty::Var(_)) => {
+                constrain_inner(
+                    context,
+                    &Ty::Record(
+                        pat.clone()
+                            .into_iter()
+                            .map(|(name, (_ty, opt))| (name, opt.unwrap_or(Ty::Undefined)))
+                            .collect(),
+                    ),
+                    rhs,
+                    cache,
+                )?;
+            }
+
+            // let-binding
+            // record typing
+            (lhs, Ty::Var(rhs)) if lhs.level() <= rhs.level => {
+                rhs.lower_bounds.borrow_mut().push(lhs.clone());
+                for upper_bound in rhs.upper_bounds.borrow().iter() {
+                    constrain_inner(context, lhs, upper_bound, cache)?;
+                }
+            }
+            (Ty::Var(_), rhs) => {
+                let rhs_extruded = extrude(context, rhs, false, lhs.level(), &mut HashMap::new());
+                constrain_inner(context, lhs, &rhs_extruded, cache)?;
+            }
+            (lhs, Ty::Var(_)) => {
+                let lhs_extruded = extrude(context, lhs, true, rhs.level(), &mut HashMap::new());
+                constrain_inner(context, &lhs_extruded, rhs, cache)?;
+            }
+
+            _ => {
+                return Err(InferError::CannotConstrain {
+                    lhs: lhs.clone(),
+                    rhs: rhs.clone(),
+                })
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Subroutine of [infer_expr].
+    fn type_term(&mut self, e: ExprId, lvl: usize) -> Ty {
+        use Ty::*;
+        match self.module[e] {
+            // TODO: why does oxcalica not use `Indentifier`?
+            // Expr::Identifier(super::ast::Identifier { name, span, .. }) => {
+            //     if let Some(var) = self.lookup(name) {
+            //         return Ok(var.instantiate(self, lvl));
+            //     }
+
+            //     // Handle with statement which could be used to supply vars
+            //     if let Some(with) = &self.with {
+            //         if let ty @ Ty::Var(var) = with {
+            //             if let Some(rec) = var.as_record() {
+            //                 if let Some(ty) = rec.get(name).cloned() {
+            //                     return Ok(ty);
+            //                 }
+            //             } else {
+            //                 let res = Ty::Var(self.fresh_var(lvl));
+            //                 constrain(
+            //                     self,
+            //                     ty,
+            //                     &Ty::Record([(name.to_string(), res.clone())].into()),
+            //                 )
+            //                 .map_err(|e| e.span(span))?;
+            //                 return Ok(res);
+            //             }
+            //         }
+            //     }
+
+            //     Err(InferError::UnknownIdentifier.span(span))
+            // }
+            Expr::Unary { ops, .. } => self.type_term(ops, lvl),
+
+            Expr::Binary { op, lhs, rhs } => {
+                match op {
+                    /* // TODO: HasAttribute is an Expr for oxcalica, why?
+                    Application is an Expr for oxcalica
+                    /* BinaryOpKind::HasAttribute => {
+                        let ty1 = type_term(self, lhs, lvl)?;
+                        let name = rhs
+                            .as_identifier_str()
+                            .map_err(|e| e.span(rhs.get_span()))?;
+                        if let Ty::Var(_) = &ty1 {
+                            constrain(
+                                self,
+                                &ty1,
+                                &Record([(name, Ty::Optional(Box::new(Ty::Undefined)))].into()), */
+                            )
+                            .map_err(|e| e.span(lhs.get_span()))?;
+                        };
+                        return Ok(Bool);
+                    } */
+
+
+                    // TODO: Attribute selection is an expr for oxcalica, why?
+                    /* BinaryOpKind::AttributeSelection => {
+                        let ty = type_term(self, lhs, lvl)?;
+                        let name = rhs
+                            .as_identifier_str()
+                            .map_err(|e| e.span(rhs.get_span()))?;
+
+                        return match ty {
+                            Ty::Var(_) => {
+                                let res = Ty::Var(self.fresh_var(lvl));
+                                constrain(self, &ty, &Ty::Record([(name, res.clone())].into()))
+                                    .map_err(|e| e.span(lhs.get_span()))?;
+                                Ok(res)
+                            }
+                            Record(rc) => {
+                                let name = rhs
+                                    .as_identifier_str()
+                                    .map_err(|e| e.span(rhs.get_span()))?;
+                                if let Some(ty) = rc.get(&name) {
+                                    Ok(ty.clone())
+                                } else {
+                                    Err(SpannedError {
+                                        error: InferError::MissingRecordField { field: name },
+                                        span: span.clone(),
+                                    })
+                                }
+                            }
+                            _ => Err(SpannedError {
+                                error: InferError::TypeMismatch {
+                                    expected: TypeName::Record,
+                                    found: ty.get_name(),
+                                },
+                                span: lhs.get_span().clone(),
+                            }),
+                        };
+                    } */
+                    _ => (),
+                }
+                let ty1 = self.type_term(lhs, lvl);
+                let ty2 = self.type_term(rhs, lvl);
+
+                match op {
+                    // Application etc.
+                    // Application is an Expr for oxcalica
+                    /* BinaryOpKind::Application => {
+                        let res = Ty::Var(self.fresh_var(lvl));
+                        constrain(
+                            self,
+                            &ty1,
+                            &Ty::Function(Box::new(ty2), Box::new(res.clone())),
+                        )
+                        .map_err(|e| e.span(lhs.get_span()))?;
+                        Ok(res)
+                    } */
+                    // Object modifications
+                    BinaryOpKind::Concat => match (&ty1, &ty2) {
+                        (Ty::List(l), Ty::List(l2)) => Ty::List([l.clone(), l2.clone()].concat()),
+                        (var1 @ Ty::Var(v1), var2 @ Ty::Var(v2)) => {
+                            self.constrain(var1, &Ty::List(vec![]));
+                            self.constrain(self, var2, &Ty::List(vec![]))
+                                .map_err(|e| e.span(rhs.get_span()))?;
+                            Ty::List(
+                                [
+                                    v1.as_list().unwrap_or_default(),
+                                    v2.as_list().unwrap_or_default(),
+                                ]
+                                .concat(),
+                            )
+                        }
+
+                        (Ty::List(l), var @ Ty::Var(_)) | (var @ Ty::Var(_), Ty::List(l)) => {
+                            constrain(self, var, &Ty::List(vec![]))
+                                .map_err(|e| e.span(rhs.get_span()))?;
+                            Ty::List(l.clone())
+                        }
+                        (Ty::List(_), ty2) => todo!(), //TODO: add err here
+                        (ty1, _) => Err(SpannedError {
+                            error: InferError::TypeMismatch {
+                                expected: TypeName::List,
+                                found: ty1.get_name(),
+                            },
+                            span: lhs.get_span().clone(),
+                        }),
+                    },
+
+                    BinaryOpKind::Update => match (&ty1, &ty2) {
+                        (Ty::Record(rc1), Ty::Record(rc2)) => {
+                            let mut rc = rc1.clone();
+                            rc.extend(rc2.clone());
+                            Ok(Ty::Record(rc))
+                        }
+
+                        (Ty::Var(v1), Ty::Var(v2)) => {
+                            constrain(self, &ty1, &Ty::Record(HashMap::new()))
+                                .map_err(|e| e.span(lhs.get_span()))?;
+                            constrain(self, &ty2, &Ty::Record(HashMap::new()))
+                                .map_err(|e| e.span(rhs.get_span()))?;
+
+                            let mut rc1 = v1.as_record().unwrap_or_default();
+                            rc1.extend(v2.as_record().unwrap_or_default());
+                            Ok(Ty::Record(rc1))
+                        }
+
+                        (Ty::Record(rc1), var @ Ty::Var(_))
+                        | (var @ Ty::Var(_), Ty::Record(rc1)) => {
+                            constrain(self, var, &Ty::Record(HashMap::new()))
+                                .map_err(|e| e.span(rhs.get_span()))?;
+                            Ok(Ty::Record(rc1.clone()))
+                        }
+                        (Ty::Record(_), ty2) => Err(SpannedError {
+                            error: InferError::TypeMismatch {
+                                expected: TypeName::Record,
+                                found: ty2.get_name(),
+                            },
+                            span: rhs.get_span().clone(),
+                        }),
+
+                        (ty1, _) => Err(SpannedError {
+                            error: InferError::TypeMismatch {
+                                expected: TypeName::Record,
+                                found: ty1.get_name(),
+                            },
+                            span: lhs.get_span().clone(),
+                        }),
+                    },
+
+                    // Primitives
+                    BinaryOpKind::Mul | BinaryOpKind::Div | BinaryOpKind::Sub => {
+                        constrain(self, &ty1, &Ty::Number).map_err(|e| e.span(lhs.get_span()))?;
+                        constrain(self, &ty2, &Ty::Number).map_err(|e| e.span(rhs.get_span()))?;
+                        Ok(Ty::Number)
+                    }
+                    BinaryOpKind::Add => {
+                        match (&ty1, &ty2) {
+                            (Ty::Number, Ty::Number) => Ok(Ty::Number),
+                            (Ty::String | Ty::Path, Ty::String | Ty::Path) => Ok(Ty::String),
+                            (Ty::Var(v1), Ty::Var(v2)) => {
+                                // TODO: is this correct?
+                                v1.lower_bounds.borrow_mut().extend([
+                                    Ty::Number,
+                                    Ty::String,
+                                    Ty::Path,
+                                ]);
+
+                                v2.lower_bounds.borrow_mut().extend([
+                                    Ty::Number,
+                                    Ty::String,
+                                    Ty::Path,
+                                ]);
+
+                                Ok(Ty::Union(
+                                    Box::new(Ty::Number),
+                                    Box::new(Ty::Union(Box::new(Ty::String), Box::new(Ty::Path))),
+                                ))
+                            }
+
+                            (var @ Ty::Var(_), Ty::Number) | (Ty::Number, var @ Ty::Var(_)) => {
+                                constrain(self, var, &Ty::Number)
+                                    .map_err(|e| e.span(lhs.get_span()))?;
+                                Ok(Ty::Number)
+                            }
+                            (var @ Ty::Var(_), Ty::String) | (Ty::String, var @ Ty::Var(_)) => {
+                                constrain(self, var, &Ty::String)
+                                    .map_err(|e| e.span(lhs.get_span()))?;
+                                Ok(Ty::String)
+                            }
+                            (var @ Ty::Var(_), Ty::Path) | (Ty::Path, var @ Ty::Var(_)) => {
+                                constrain(self, var, &Ty::Path)
+                                    .map_err(|e| e.span(lhs.get_span()))?;
+                                Ok(Ty::Path)
+                            }
+                            (Ty::Number | Ty::Path | Ty::String, ty2) => Err(SpannedError {
+                                error: InferError::TypeMismatch {
+                                    // TODO: this should be union of Number, String, Path
+                                    expected: TypeName::Number,
+                                    found: ty2.get_name(),
+                                },
+                                span: rhs.get_span().clone(),
+                            }),
+                            (ty1, _) => Err(SpannedError {
+                                error: InferError::TypeMismatch {
+                                    // TODO: this should be union of Number, String, Path
+                                    expected: TypeName::Number,
+                                    found: ty1.get_name(),
+                                },
+                                span: lhs.get_span().clone(),
+                            }),
+                        }
+                    }
+
+                    // Misc
+                    BinaryOpKind::AttributeFallback => {
+                        constrain(self, &ty1, &ty2).map_err(|e| e.span(lhs.get_span()))?;
+                        constrain(self, &ty1, &ty2).map_err(|e| e.span(rhs.get_span()))?;
+                        Ok(Ty::Union(Box::new(ty1), Box::new(ty2)))
+                    }
+
+                    // Comparisons
+                    BinaryOpKind::LessThan
+                    | BinaryOpKind::LessThanEqual
+                    | BinaryOpKind::GreaterThan
+                    | BinaryOpKind::GreaterThanEqual
+                    | BinaryOpKind::Equal
+                    | BinaryOpKind::NotEqual => match (&ty1, &ty2) {
+                        (ty @ Ty::Var(_), _) | (_, ty @ Ty::Var(_)) => {
+                            constrain(self, ty, &ty2).map_err(|e| e.span(lhs.get_span()))?;
+                            Ok(Bool)
+                        }
+                        (ty1, ty2) if ty1 != ty2 => Err(SpannedError {
+                            error: InferError::TypeMismatch {
+                                expected: ty1.get_name(),
+                                found: ty2.get_name(),
+                            },
+                            span: rhs.get_span().clone(),
+                        }),
+                        _ => Ok(Bool),
+                    },
+
+                    // Logical oprators
+                    BinaryOpKind::And | BinaryOpKind::Or | BinaryOpKind::Implication => {
+                        constrain(self, &ty1, &Ty::Bool).map_err(|e| e.span(lhs.get_span()))?;
+                        constrain(self, &ty2, &Ty::Bool).map_err(|e| e.span(rhs.get_span()))?;
+                        Ok(Bool)
+                    }
+                    _ => panic!("unimplemented binary operator: {:?}", op),
+                }
+            }
+
+            // Language constructs
+            Expr::Attrset(Bindings) => {
+                let Bindings {
+                    attrs,
+                    inherit,
+                    is_recursive,
+                } = todo!();
+                if *is_recursive {
+                    let vars: Vec<_> = attrs
+                        .iter()
+                        .map(|(ident, _expr)| {
+                            (
+                                ident.name.to_string(),
+                                ContextType::Type(Ty::Var(self.fresh_var(lvl))),
+                            )
+                        })
+                        .collect();
+
+                    let mut inherits = load_inherit(self, span.clone(), lvl, inherit)?;
+                    inherits.extend(vars.clone());
+
+                    self.with_scope(inherits, |ctx| {
+                        let names = vars.into_iter().map(|(name, var)| {
+                            (name, var.into_type().unwrap().into_var().unwrap())
+                        });
+                        let expressions = attrs.iter().map(|(_, expr)| expr);
+
+                        let (ok, errs): (Vec<_>, Vec<_>) = names
+                            .into_iter()
+                            .zip(expressions)
+                            .map(move |((name, e_ty), rhs)| {
+                                let ty = ctx.with_scope(
+                                    vec![(
+                                        name.to_string(),
+                                        ContextType::Type(Ty::Var(e_ty.clone())),
+                                    )],
+                                    |ctx| type_term(ctx, rhs, lvl + 1),
+                                )?;
+                                constrain(ctx, &ty, &Ty::Var(e_ty.clone()))
+                                    .map_err(|e| e.span(rhs.get_span()))?;
+                                Ok((name, Ty::Var(e_ty)))
+                            })
+                            .partition_map(|r| match r {
+                                Ok(v) => Either::Left(v),
+                                Err(v) => Either::Right(v),
+                            });
+
+                        if errs.is_empty() {
+                            Ok(Ty::Record(ok.into_iter().collect()))
+                        } else {
+                            Err(SpannedError {
+                                error: InferError::MultipleErrors(errs),
+                                span: span.clone(),
+                            })
+                        }
+                    })
+                } else {
+                    let mut vars: HashMap<_, _> = attrs
+                        .iter()
+                        .map(|(ident, expr)| {
+                            (ident.name.to_string(), type_term(self, expr, lvl).unwrap())
+                        })
+                        .collect();
+                    let ok = load_inherit(self, span.clone(), lvl, inherit);
+                    vars.extend(
+                        ok?.into_iter()
+                            .map(|(name, ty)| (name.to_string(), ty.instantiate(self, lvl))),
+                    );
+                    Ok(Record(vars))
+                }
+            }
+
+            Expr::LetIn {
+                bindings,
+                inherit,
+                body,
+                span,
+            } => {
+                let binds: Vec<_> = bindings
+                    .iter()
+                    .map(|(name, _)| {
+                        (
+                            name.name.to_string(),
+                            ContextType::Type(Ty::Var(self.fresh_var(lvl + 1))),
+                        )
+                    })
+                    .collect();
+
+                let mut inherits = load_inherit(self, span.clone(), lvl, inherit)?;
+                inherits.extend(binds.clone());
+                let (ok, err): (Vec<_>, Vec<_>) = self
+                    .with_scope(inherits, |ctx| {
+                        let names = binds.into_iter().map(|(name, var)| {
+                            (name, var.into_type().unwrap().into_var().unwrap())
+                        });
+                        let expressions = bindings.iter().map(|(_, expr)| expr);
+
+                        names
+                            .into_iter()
+                            .zip(expressions)
+                            .map(move |((name, e_ty), rhs)| {
+                                let ty = ctx.with_scope(
+                                    vec![(
+                                        name.to_string(),
+                                        ContextType::Type(Ty::Var(e_ty.clone())),
+                                    )],
+                                    |ctx| type_term(ctx, rhs, lvl + 1),
+                                )?;
+                                let bind = bindings.iter().find(|(n, _)| n.name == *name).unwrap();
+                                bind.0.var.set(coalesc_type(ctx, &ty)).unwrap();
+                                constrain(ctx, &ty, &Ty::Var(e_ty.clone()))
+                                    .map_err(|e| e.span(rhs.get_span()))?;
+                                Ok((
+                                    name,
+                                    ContextType::PolymorhicType(PolymorphicType::new(
+                                        Ty::Var(e_ty),
+                                        lvl,
+                                    )),
+                                ))
+                            })
+                            .collect_vec()
+                    })
+                    .into_iter()
+                    .partition_map(|r| match r {
+                        Ok(v) => Either::Left(v),
+                        Err(v) => Either::Right(v),
+                    });
+
+                if !err.is_empty() {
+                    return Err(SpannedError {
+                        error: InferError::MultipleErrors(err),
+                        span: span.clone(),
+                    });
+                }
+
+                let ret = self.with_scope(ok, |ctx| type_term(ctx, body, lvl))?;
+                Ok(ret)
+            }
+
+            Expr::Lambda {
+                pattern,
+                body,
+                span,
+            } => {
+                let mut added = vec![];
+                let ty = match pattern {
+                    crate::ast::Pattern::Record {
+                        patterns,
+                        is_wildcard,
+                        name,
+                    } => {
+                        let mut item = vec![];
+
+                        for pattern in patterns {
+                            match pattern {
+                                PatternElement::Identifier(ident) => {
+                                    let var = Ty::Var(self.fresh_var(lvl));
+                                    item.push((ident.name.clone(), (var.clone(), None)));
+                                    added.push((ident.name.to_string(), ContextType::Type(var)));
+                                }
+                                PatternElement::DefaultIdentifier(name, expr) => {
+                                    let ty = type_term(self, expr, lvl)?;
+                                    let var = Ty::Var(self.fresh_var(lvl));
+                                    constrain(self, &var, &ty).map_err(|e| e.span(span))?;
+
+                                    item.push((name.name.clone(), (var.clone(), Some(ty))));
+                                    added.push((name.name.to_string(), ContextType::Type(var)));
+                                }
+                            }
+                        }
+
+                        let ty = Ty::Pattern(item.clone().into_iter().collect(), *is_wildcard);
+                        if let Some(name) = name {
+                            let var = self.fresh_var(lvl);
+                            if *is_wildcard {
+                                constrain(
+                                    self,
+                                    &Ty::Var(var.clone()),
+                                    &Ty::Record(
+                                        item.into_iter()
+                                            .map(|(name, (var, _))| (name, var))
+                                            .collect(),
+                                    ),
+                                )
+                                .map_err(|e| e.span(span))?;
+                            } else {
+                                constrain(self, &Ty::Var(var.clone()), &ty)
+                                    .map_err(|e| e.span(span))?;
+                            }
+                            added.push((name.to_string(), ContextType::Type(Ty::Var(var))));
+                        }
+                        ty
+                    }
+                    crate::ast::Pattern::Identifier(Identifier { name, .. }) => {
+                        let ty = Ty::Var(self.fresh_var(lvl));
+                        added.push((name.to_string(), ContextType::Type(ty.clone())));
+                        ty
+                    }
+                };
+                let ret = self.with_scope(added, |context| type_term(context, body, lvl))?;
+                Ok(Function(Box::new(ty), Box::new(ret)))
+            }
+
+            Ast::With { set, body, span } => {
+                let ty = type_term(self, set, lvl)?;
+                match ty {
+                    var @ Ty::Var(_) => {
+                        self.set_with(var);
+                        let ret = type_term(self, body, lvl);
+                        self.remove_with();
+                        ret
+                    }
+                    Ty::Record(rc) => self.with_scope(
+                        rc.iter()
+                            .filter(|(name, _)| self.with.is_some() || self.lookup(name).is_none())
+                            .map(|(name, ty)| (name.to_string(), ContextType::Type(ty.clone())))
+                            .collect(),
+                        |ctx| type_term(ctx, body, lvl),
+                    ),
+                    _ => Err(SpannedError {
+                        error: InferError::TypeMismatch {
+                            expected: TypeName::Record,
+                            found: ty.get_name(),
+                        },
+                        span: span.clone(),
+                    }),
+                }
+            }
+
+            Expr::Conditional {
+                condition,
+                expr1,
+                expr2,
+                span,
+            } => {
+                let ty = type_term(self, condition, lvl)?;
+                match ty {
+                    Ty::Var(_) => {
+                        constrain(self, &ty, &Ty::Bool)
+                            .map_err(|e| e.span(condition.get_span()))?;
+                    }
+                    Ty::Bool => (),
+                    _ => {
+                        return Err(SpannedError {
+                            error: InferError::TypeMismatch {
+                                expected: TypeName::Bool,
+                                found: ty.get_name(),
+                            },
+                            span: span.clone(),
+                        })
+                    }
+                }
+                let ty1 = type_term(self, expr1, lvl)?;
+                let ty2 = type_term(self, expr2, lvl)?;
+                if ty1 != ty2 {
+                    Ok(Union(Box::new(ty1), Box::new(ty2)))
+                } else {
+                    Ok(ty1)
+                }
+            }
+            Expr::Assert {
+                condition,
+                expr,
+                span: _,
+            } => {
+                let ty = type_term(self, condition, lvl)?;
+                match ty {
+                    Ty::Bool => (),
+                    Ty::Var(_) => {
+                        constrain(self, &ty, &Ty::Bool)
+                            .map_err(|e| e.span(condition.get_span()))?;
+                    }
+                    _ => {
+                        return Err(SpannedError {
+                            error: InferError::TypeMismatch {
+                                expected: TypeName::Bool,
+                                found: ty.get_name(),
+                            },
+                            span: condition.get_span().clone(),
+                        });
+                    }
+                }
+
+                type_term(self, expr, lvl)
+            }
+
+            Expr::List { exprs, span: _ } => Ok({
+                let expr = exprs
+                    .iter()
+                    .flat_map(|ast| type_term(self, ast, lvl))
+                    .collect_vec();
+
+                if let Some(fst) = expr.first() {
+                    let homo = expr.iter().all(|r| r == fst);
+                    if homo {
+                        return Ok(Ty::List(vec![fst.clone()]));
+                    }
+                }
+
+                Ty::List(expr)
+            }),
+
+            // Primitives
+            Expr::NixString(_) => Ok(String),
+            Ast::NixPath(_) => Ok(Path),
+            Ast::Null(_) => Ok(Null),
+            Ast::Bool { .. } => Ok(Bool),
+            Ast::Int { .. } | Ast::Float { .. } => Ok(Number),
+            Ast::Comment(_) | Ast::DocComment(_) | Ast::LineComment(_) => unimplemented!(),
+        }
+    }
+
+    fn load_inherit(
+        &mut self,
+        lvl: usize,
+        inherit: &[Inherit],
+    ) -> Result<Vec<(String, ContextType)>, SpannedError> {
+        let (ok, err): (Vec<_>, Vec<_>) = inherit
+            .iter()
+            .map(|Inherit { name, items }| {
+                if let Some(expr) = name {
+                    let ty = type_term(ctx, expr, lvl)?;
+
+                    match &ty {
+                        ty @ Ty::Var(_) => {
+                            let vars = items
+                                .iter()
+                                .map(|(_span, name)| {
+                                    (name.to_string(), Ty::Var(ctx.fresh_var(lvl)))
+                                })
+                                .collect_vec();
+                            let record = Ty::Record(vars.clone().into_iter().collect());
+
+                            constrain(ctx, ty, &record).map_err(|e| e.span(expr.get_span()))?;
+
+                            Ok(vars
+                                .into_iter()
+                                .map(|(name, ty)| (name, ContextType::Type(ty)))
+                                .collect())
+                        }
+                        Ty::Record(rc_items) => {
+                            let (ok, err): (Vec<_>, Vec<_>) = items
+                                .iter()
+                                .map(|(range, name)| {
+                                    Ok((
+                                        name.to_string(),
+                                        ContextType::Type(
+                                            rc_items
+                                                .get(name)
+                                                .ok_or(
+                                                    InferError::MissingRecordField {
+                                                        field: name.clone(),
+                                                    }
+                                                    .span(range),
+                                                )?
+                                                .clone(),
+                                        ),
+                                    ))
+                                })
+                                .partition_map(|r| match r {
+                                    Ok(ty) => Either::Left(ty),
+                                    Err(e) => Either::Right(e),
+                                });
+                            if err.is_empty() {
+                                Ok(ok)
+                            } else {
+                                Err(SpannedError {
+                                    error: InferError::MultipleErrors(err),
+                                    span: span.clone(),
+                                })
+                            }
+                        }
+                        _ => Err(SpannedError {
+                            error: InferError::TypeMismatch {
+                                expected: TypeName::Record,
+                                found: ty.get_name(),
+                            },
+                            span: span.clone(),
+                        }),
+                    }
+                } else {
+                    let (ok, err): (Vec<_>, Vec<_>) = items
+                        .iter()
+                        .map(|(range, name)| {
+                            Ok((
+                                name.to_string(),
+                                ctx.lookup(name)
+                                    .ok_or(InferError::UnknownIdentifier.span(range))?
+                                    .clone(),
+                            ))
+                        })
+                        .partition_map(|r| match r {
+                            Ok(v) => Either::Left(v),
+                            Err(v) => Either::Right(v),
+                        });
+
+                    if err.is_empty() {
+                        Ok(ok)
+                    } else {
+                        Err(SpannedError {
+                            error: InferError::MultipleErrors(err),
+                            span: span.clone(),
+                        })
+                    }
+                }
+            })
+            .partition_map(|r| match r {
+                Ok(v) => Either::Left(v),
+                Err(v) => Either::Right(v),
+            });
+
+        if !err.is_empty() {
+            Err(SpannedError {
+                error: InferError::MultipleErrors(err),
+                span: span.clone(),
+            })
+        } else {
+            Ok(ok.into_iter().flatten().collect())
         }
     }
 

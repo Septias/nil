@@ -73,6 +73,7 @@ macro_rules! ty {
 
 mod convert;
 mod display;
+mod error;
 mod infer;
 pub mod known;
 mod union_find;
