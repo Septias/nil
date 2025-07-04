@@ -11,10 +11,10 @@ members = [
 
 [workspace.package]
 version = "0.0.0"
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 # Should be sync with CI and README.
-rust-version = "1.77"
+rust-version = "1.85"
 
 [profile.dev]
 debug = 1

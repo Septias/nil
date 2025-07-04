@@ -7,15 +7,15 @@ rust-version.workspace = true
 
 [dependencies]
 builtin = { path = "../builtin" }
-either = "1.8.0"
+either = "1.15.0"
 if_chain = "1.0.2"
 indexmap = "2"
 itertools = "0.14"
 la-arena = "0.3.0"
 nix-interop = { path = "../nix-interop" }
-once_cell = "1.17.0"
+once_cell = "1.21.3"
 ordered-float = "5"
-salsa = "0.17.0-pre.2"
+salsa = "0.23"
 smallvec = { version = "1.10.0", features = ["const_generics", "union"] }
 smol_str = "0.3"
 syntax = { path = "../syntax" }
@@ -23,7 +23,7 @@ url = "2.3.1"
 
 [dev-dependencies]
 anyhow = "1.0.60"
-expect-test = "1.4.0"
+expect-test = "1.5.1"
 
 [lints]
 workspace = true
