@@ -8,77 +8,75 @@ rec {
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs =
-    {
-      self,
-      flake-utils,
-      nixpkgs,
-      rust-overlay,
+  outputs = {
+    self,
+    flake-utils,
+    nixpkgs,
+    rust-overlay,
+  }: let
+    inherit (builtins) substring;
+    inherit (nixpkgs) lib;
+
+    # For rustfmt and fuzz.
+    nightlyVersion = "2025-03-01";
+
+    mtime = self.lastModifiedDate;
+    date = "${substring 0 4 mtime}-${substring 4 2 mtime}-${substring 6 2 mtime}";
+    rev = self.rev or (lib.warn "Git changes are not committed" (self.dirtyRev or "dirty"));
+
+    mkNil = {
+      rustPlatform,
+      nixVersions,
+      ...
     }:
-    let
-      inherit (builtins) substring;
-      inherit (nixpkgs) lib;
+      rustPlatform.buildRustPackage {
+        pname = "nil";
+        version = "unstable-${date}";
+        src = self;
 
-      # For rustfmt and fuzz.
-      nightlyVersion = "2025-03-01";
-
-      mtime = self.lastModifiedDate;
-      date = "${substring 0 4 mtime}-${substring 4 2 mtime}-${substring 6 2 mtime}";
-      rev = self.rev or (lib.warn "Git changes are not committed" (self.dirtyRev or "dirty"));
-
-      mkNil =
-        { rustPlatform, nixVersions, ... }:
-        rustPlatform.buildRustPackage {
-          pname = "nil";
-          version = "unstable-${date}";
-          src = self;
-
-          cargoLock = {
-            lockFile = ./Cargo.lock;
-            allowBuiltinFetchGit = false;
-          };
-
-          nativeBuildInputs = [ (nixVersions.latest or nixVersions.unstable) ];
-
-          CFG_RELEASE = "git-${rev}";
-
-          meta = {
-            inherit description;
-            homepage = "https://github.com/oxalica/nil";
-            license = with lib.licenses; [
-              mit
-              asl20
-            ];
-            mainProgram = "nil";
-          };
+        cargoLock = {
+          lockFile = ./Cargo.lock;
+          allowBuiltinFetchGit = false;
         };
 
-      mkCocNil =
-        {
-          runCommand,
-          nodejs,
-          esbuild,
-        }:
-        runCommand "coc-nil-unstable-${date}"
-          {
-            nativeBuildInputs = [
-              nodejs
-              esbuild
-            ];
-            src = ./editors/coc-nil;
-          }
-          ''
-            cp -r --no-preserve=all $src ./source
-            cd source
-            npm run build --offline
-            mkdir -p $out
-            cp -rt $out lib package{,-lock}.json
-          '';
+        nativeBuildInputs = [(nixVersions.latest or nixVersions.unstable)];
 
-    in
+        CFG_RELEASE = "git-${rev}";
+
+        meta = {
+          inherit description;
+          homepage = "https://github.com/oxalica/nil";
+          license = with lib.licenses; [
+            mit
+            asl20
+          ];
+          mainProgram = "nil";
+        };
+      };
+
+    mkCocNil = {
+      runCommand,
+      nodejs,
+      esbuild,
+    }:
+      runCommand "coc-nil-unstable-${date}"
+      {
+        nativeBuildInputs = [
+          nodejs
+          esbuild
+        ];
+        src = ./editors/coc-nil;
+      }
+      ''
+        cp -r --no-preserve=all $src ./source
+        cd source
+        npm run build --offline
+        mkdir -p $out
+        cp -rt $out lib package{,-lock}.json
+      '';
+  in
     flake-utils.lib.eachDefaultSystem (
-      system:
-      let
+      system: let
         pkgs = nixpkgs.legacyPackages.${system};
         rustPkgs = rust-overlay.packages.${system};
 
@@ -108,18 +106,15 @@ rec {
 
           cd editors/coc-nil && npm run lint
         '';
-
-      in
-      rec {
+      in rec {
         packages = rec {
           default = nil;
-          nil = pkgs.callPackage mkNil { };
-          coc-nil = pkgs.callPackage mkCocNil { };
+          nil = pkgs.callPackage mkNil {};
+          coc-nil = pkgs.callPackage mkCocNil {};
         };
 
         devShells.without-rust = pkgs.mkShell {
-          nativeBuildInputs =
-            with pkgs;
+          nativeBuildInputs = with pkgs;
             [
               # Override the stable rustfmt.
               rustPkgs."rust-nightly_${nightlyVersion}".availableComponents.rustfmt
@@ -135,12 +130,12 @@ rec {
               jq
               pre-commit
               nixfmt-rfc-style
-              (import ./dev/nvim-lsp.nix { inherit pkgs; })
-              (import ./dev/vim-coc.nix { inherit pkgs; })
-              (import ./dev/vim-lsp.nix { inherit pkgs; })
+              (import ./dev/nvim-lsp.nix {inherit pkgs;})
+              (import ./dev/vim-coc.nix {inherit pkgs;})
+              (import ./dev/vim-lsp.nix {inherit pkgs;})
             ]
             ++ lib.optionals (lib.meta.availableOn stdenv.hostPlatform vscodium) [
-              (import ./dev/vscodium.nix { inherit pkgs; })
+              (import ./dev/vscodium.nix {inherit pkgs;})
             ]
             ++ lib.optionals (lib.meta.availableOn stdenv.hostPlatform gdb) [
               gdb
@@ -157,24 +152,29 @@ rec {
         };
 
         devShells.default = devShells.without-rust.overrideAttrs (old: {
-          nativeBuildInputs = old.nativeBuildInputs ++ [
-            # Follows nixpkgs's version of rustc.
-            (
-              let
-                vers = lib.splitVersion pkgs.rustc.version;
-              in
-              rustPkgs."rust_${lib.elemAt vers 0}_${lib.elemAt vers 1}_${lib.elemAt vers 2}".override {
-                extensions = [ "rust-src" ];
-              }
-            )
-          ];
+          nativeBuildInputs =
+            old.nativeBuildInputs
+            ++ [
+              pkgs.rust-analyzer
+              # Follows nixpkgs's version of rustc.
+              (
+                let
+                  vers = lib.splitVersion pkgs.rustc.version;
+                in
+                  rustPkgs."rust_${lib.elemAt vers 0}_${lib.elemAt vers 1}_${lib.elemAt vers 2}".override {
+                    extensions = ["rust-src"];
+                  }
+              )
+            ];
         });
 
         # See comments above.
         devShells.full = devShells.default.overrideAttrs (old: {
-          nativeBuildInputs = old.nativeBuildInputs ++ [
-            (pkgs.nixVersions.latest or pkgs.nixVersions.unstable).out
-          ];
+          nativeBuildInputs =
+            old.nativeBuildInputs
+            ++ [
+              (pkgs.nixVersions.latest or pkgs.nixVersions.unstable).out
+            ];
         });
 
         devShells.fuzz = pkgs.mkShell {
@@ -198,12 +198,14 @@ rec {
       overlays = {
         default = lib.composeExtensions self.overlays.nil self.overlays.coc-nil;
         nil = final: prev: {
-          nil = final.callPackage mkNil { };
+          nil = final.callPackage mkNil {};
         };
         coc-nil = final: prev: {
-          vimPlugins = prev.vimPlugins or { } // {
-            coc-nil = final.callPackage mkCocNil { };
-          };
+          vimPlugins =
+            prev.vimPlugins or {}
+            // {
+              coc-nil = final.callPackage mkCocNil {};
+            };
         };
       };
     };
