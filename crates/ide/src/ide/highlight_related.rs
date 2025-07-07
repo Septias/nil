@@ -1,7 +1,8 @@
+use crate::FilePos;
 use crate::def::{AstPtr, ResolveResult};
-use crate::{DefDatabase, FilePos};
+use salsa::Database;
 use syntax::ast::{self, AstNode};
-use syntax::{best_token_at_offset, TextRange, T};
+use syntax::{T, TextRange, best_token_at_offset};
 
 /// The max distance between returned positions and the original one. Spans too far away are not
 /// considered "related", to prevent spamming MBs of data to the client. This can happen when
@@ -14,7 +15,7 @@ pub struct HlRelated {
     pub is_definition: bool,
 }
 
-pub(crate) fn highlight_related(db: &dyn DefDatabase, fpos: FilePos) -> Option<Vec<HlRelated>> {
+pub(crate) fn highlight_related(db: &dyn Database, fpos: FilePos) -> Option<Vec<HlRelated>> {
     let parse = db.parse(fpos.file_id);
     let source_map = db.source_map(fpos.file_id);
     let tok = best_token_at_offset(&parse.syntax_node(), fpos.pos)?;
@@ -116,8 +117,7 @@ pub(crate) fn highlight_related(db: &dyn DefDatabase, fpos: FilePos) -> Option<V
 #[cfg(test)]
 mod tests {
     use crate::tests::TestDB;
-    use crate::SourceDatabase;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     #[track_caller]
     fn check(fixture: &str, expect: Expect) {

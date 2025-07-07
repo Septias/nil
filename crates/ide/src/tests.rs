@@ -1,11 +1,8 @@
-use crate::base::SourceDatabaseStorage;
-use crate::def::DefDatabaseStorage;
-use crate::ty::TyDatabaseStorage;
 use crate::{
-    Change, DefDatabase, FileId, FilePos, FileRange, FileSet, FlakeGraph, FlakeInfo,
-    SourceDatabase, SourceRoot, SourceRootId, VfsPath,
+    Change, FileId, FilePos, FileRange, FileSet, FlakeGraph, FlakeInfo, SourceRoot, SourceRootId,
+    VfsPath,
 };
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{Context, Result, bail, ensure};
 use indexmap::IndexMap;
 use nix_interop::{DEFAULT_IMPORT_FILE, FLAKE_FILE};
 use std::collections::HashMap;
@@ -16,12 +13,13 @@ use syntax::{NixLanguage, SyntaxNode, TextRange, TextSize};
 
 pub const MARKER_INDICATOR: char = '$';
 
-#[salsa::database(SourceDatabaseStorage, DefDatabaseStorage, TyDatabaseStorage)]
-#[derive(Default)]
+#[salsa::db]
+#[derive(Default, Clone)]
 pub struct TestDB {
     storage: salsa::Storage<Self>,
 }
 
+#[salsa::db]
 impl salsa::Database for TestDB {}
 
 impl TestDB {

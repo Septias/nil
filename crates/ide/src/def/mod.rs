@@ -7,11 +7,11 @@ mod path;
 #[cfg(test)]
 mod tests;
 
-use crate::base::SourceDatabase;
-use crate::{Diagnostic, FileId, SourceRootId, VfsPath};
+use crate::{Diagnostic, FileId, SourceRootId};
 use la_arena::{Arena, ArenaMap, Idx};
 use nix_interop::DEFAULT_IMPORT_FILE;
 use ordered_float::OrderedFloat;
+use salsa::Database;
 use smallvec::SmallVec;
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
@@ -20,78 +20,26 @@ use std::sync::Arc;
 use syntax::Parse;
 
 pub use self::kind::ModuleKind;
-pub use self::liveness::LivenessCheckResult;
-pub use self::nameres::{ModuleScopes, NameReference, NameResolution, ResolveResult};
+pub use self::nameres::{ModuleScopes, NameResolution, ResolveResult};
 pub use self::path::{Path, PathAnchor, PathData};
 pub use syntax::ast::{BinaryOpKind as BinaryOp, UnaryOpKind as UnaryOp};
 
-/// Database for definitions.
-#[salsa::query_group(DefDatabaseStorage)]
-pub trait DefDatabase: SourceDatabase {
-    #[salsa::interned]
-    fn intern_path(&self, path_data: PathData) -> Path;
-
-    /// Parse a file and return the parse result.
-    fn parse(&self, file_id: FileId) -> Parse;
-
-    /// Get the module and its source map.
-    fn module_with_source_map(&self, file_id: FileId) -> (Arc<Module>, Arc<ModuleSourceMap>);
-
-    /// Get the module of given [FileId].
-    fn module(&self, file_id: FileId) -> Arc<Module>;
-
-    /// Get the source map of given [FileId].
-    fn source_map(&self, file_id: FileId) -> Arc<ModuleSourceMap>;
-
-    /// Get the module kind of given [FileId].
-    #[salsa::invoke(ModuleKind::module_kind_query)]
-    fn module_kind(&self, file_id: FileId) -> Arc<ModuleKind>;
-
-    #[salsa::invoke(Module::module_references_query)]
-    /// Get the module References of given [FileId].
-    fn module_references(&self, file_id: FileId) -> Arc<HashSet<FileId>>;
-
-    /// Get the source root referrer graph of given [SourceRootId].
-    fn source_root_referrer_graph(
-        &self,
-        sid: SourceRootId,
-    ) -> Arc<HashMap<FileId, ModuleReferrers>>;
-
-    /// Ge the source root closure.
-    fn source_root_closure(&self, id: SourceRootId) -> Arc<HashSet<FileId>>;
-
-    // The result is not wrapped in Arc. Typically, the number of referrers is just 1 or 0.
-    // And also this method is not call so often.
-    fn module_referrers(&self, file_id: FileId) -> ModuleReferrers;
-
-    /// Resolve a path by looking it up in the Vfs.
-    #[salsa::invoke(Path::resolve_path_query)]
-    fn resolve_path(&self, path: Path) -> Option<VfsPath>;
-
-    /// Get the module scopes.
-    #[salsa::invoke(ModuleScopes::module_scopes_query)]
-    fn scopes(&self, file_id: FileId) -> Arc<ModuleScopes>;
-
-    /// Get the name  resolution of given file.
-    #[salsa::invoke(NameResolution::name_resolution_query)]
-    fn name_resolution(&self, file_id: FileId) -> Arc<NameResolution>;
-
-    /// Get the name references.
-    #[salsa::invoke(NameReference::name_reference_query)]
-    fn name_reference(&self, file_id: FileId) -> Arc<NameReference>;
-
-    /// Get the liveness check.
-    #[salsa::invoke(liveness::liveness_check_query)]
-    fn liveness_check(&self, file_id: FileId) -> Arc<LivenessCheckResult>;
+#[salsa::db]
+#[derive(Default, Clone)]
+pub struct DefDatabase {
+    storage: salsa::Storage<Self>,
 }
 
-fn parse(db: &dyn DefDatabase, file_id: FileId) -> Parse {
+#[salsa::db]
+impl salsa::Database for DefDatabase {}
+
+fn parse(db: &dyn Database, file_id: FileId) -> Parse {
     let content = db.file_content(file_id);
     syntax::parse_file(&content)
 }
 
 fn module_with_source_map(
-    db: &dyn DefDatabase,
+    db: &dyn Database,
     file_id: FileId,
 ) -> (Arc<Module>, Arc<ModuleSourceMap>) {
     let parse = db.parse(file_id);
@@ -101,18 +49,18 @@ fn module_with_source_map(
     (Arc::new(module), Arc::new(source_map))
 }
 
-fn module(db: &dyn DefDatabase, file_id: FileId) -> Arc<Module> {
+fn module(db: &dyn Database, file_id: FileId) -> Arc<Module> {
     db.module_with_source_map(file_id).0
 }
 
-fn source_map(db: &dyn DefDatabase, file_id: FileId) -> Arc<ModuleSourceMap> {
+fn source_map(db: &dyn Database, file_id: FileId) -> Arc<ModuleSourceMap> {
     db.module_with_source_map(file_id).1
 }
 
 pub type ModuleReferrers = SmallVec<[FileId; 2]>;
 
 fn source_root_referrer_graph(
-    db: &dyn DefDatabase,
+    db: &dyn Database,
     sid: SourceRootId,
 ) -> Arc<HashMap<FileId, ModuleReferrers>> {
     // Assert our inline threshould costs no extra memory.
@@ -137,13 +85,13 @@ fn source_root_referrer_graph(
     Arc::new(graph)
 }
 
-fn module_referrers(db: &dyn DefDatabase, file_id: FileId) -> ModuleReferrers {
+fn module_referrers(db: &dyn Database, file_id: FileId) -> ModuleReferrers {
     let sid = db.file_source_root(file_id);
     let graph = db.source_root_referrer_graph(sid);
     graph.get(&file_id).cloned().unwrap_or_default()
 }
 
-fn source_root_closure(db: &dyn DefDatabase, id: SourceRootId) -> Arc<HashSet<FileId>> {
+fn source_root_closure(db: &dyn Database, id: SourceRootId) -> Arc<HashSet<FileId>> {
     let Some(entry) = db.source_root(id).entry() else {
         return Arc::default();
     };
@@ -210,7 +158,7 @@ impl Module {
     }
 
     pub(crate) fn module_references_query(
-        db: &dyn DefDatabase,
+        db: &dyn Database,
         file_id: FileId,
     ) -> Arc<HashSet<FileId>> {
         let source_root = db.source_root(db.file_source_root(file_id));

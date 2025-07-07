@@ -1,5 +1,6 @@
 use crate::def::{AstPtr, Expr, ExprId, Literal};
-use crate::{DefDatabase, FileId, FileRange, VfsPath};
+use crate::{FileId, FileRange, VfsPath};
+use salsa::Database;
 use syntax::TextRange;
 use url::Url;
 
@@ -21,7 +22,7 @@ pub enum LinkTarget {
     VfsPath(VfsPath),
 }
 
-pub(crate) fn links(db: &dyn DefDatabase, file_id: FileId) -> Vec<Link> {
+pub(crate) fn links(db: &dyn Database, file_id: FileId) -> Vec<Link> {
     let module = db.module(file_id);
     let source_map = db.source_map(file_id);
 
@@ -47,7 +48,7 @@ pub(crate) fn links(db: &dyn DefDatabase, file_id: FileId) -> Vec<Link> {
     module.exprs().filter_map(extract_link).collect()
 }
 
-pub(crate) fn link_resolve(db: &dyn DefDatabase, frange: FileRange) -> Option<Link> {
+pub(crate) fn link_resolve(db: &dyn Database, frange: FileRange) -> Option<Link> {
     let module = db.module(frange.file_id);
     let source_map = db.source_map(frange.file_id);
     let parse = db.parse(frange.file_id);
@@ -136,9 +137,8 @@ fn try_resolve_link_uri(uri: &str) -> Option<Url> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::base::SourceDatabase;
     use crate::tests::TestDB;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     #[track_caller]
     fn check(fixture: &str, expect: Expect) {

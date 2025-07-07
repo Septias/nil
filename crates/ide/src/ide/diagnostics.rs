@@ -1,7 +1,7 @@
 use crate::{DefDatabase, Diagnostic, FileId};
 
 /// Get all diagnostics for a file.
-pub(crate) fn diagnostics(db: &dyn DefDatabase, file: FileId) -> Vec<Diagnostic> {
+pub(crate) fn diagnostics(db: &dyn Database, file: FileId) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 
     // Parsing.
@@ -25,7 +25,7 @@ pub(crate) fn diagnostics(db: &dyn DefDatabase, file: FileId) -> Vec<Diagnostic>
 #[cfg(test)]
 mod tests {
     use crate::tests::TestDB;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     fn check(fixture: &str, expect: Expect) {
         let (db, file_id) = TestDB::single_file(fixture).unwrap();

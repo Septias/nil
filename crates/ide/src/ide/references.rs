@@ -1,7 +1,8 @@
 use crate::def::{AstPtr, ResolveResult};
-use crate::{DefDatabase, FilePos, FileRange};
+use crate::{FilePos, FileRange};
+use salsa::Database;
 use syntax::ast::{self, AstNode};
-use syntax::{best_token_at_offset, SyntaxKind, T};
+use syntax::{SyntaxKind, T, best_token_at_offset};
 
 enum DefKind {
     Attr(AstPtr),
@@ -10,7 +11,7 @@ enum DefKind {
 
 /// Return all references of this expression.
 pub(crate) fn references(
-    db: &dyn DefDatabase,
+    db: &dyn Database,
     FilePos { file_id, pos }: FilePos,
 ) -> Option<Vec<FileRange>> {
     let parse = db.parse(file_id);

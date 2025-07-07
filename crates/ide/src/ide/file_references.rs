@@ -1,6 +1,6 @@
 use crate::{DefDatabase, FileId};
 
-pub(crate) fn file_references(db: &dyn DefDatabase, file: FileId) -> Vec<FileId> {
+pub(crate) fn file_references(db: &dyn Database, file: FileId) -> Vec<FileId> {
     let mut refs = db
         .module_references(file)
         .iter()
@@ -10,6 +10,6 @@ pub(crate) fn file_references(db: &dyn DefDatabase, file: FileId) -> Vec<FileId>
     refs
 }
 
-pub(crate) fn file_referrers(db: &dyn DefDatabase, file: FileId) -> Vec<FileId> {
+pub(crate) fn file_referrers(db: &dyn Database, file: FileId) -> Vec<FileId> {
     db.module_referrers(file).into_vec()
 }

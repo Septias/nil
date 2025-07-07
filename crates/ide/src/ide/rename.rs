@@ -1,15 +1,16 @@
 use crate::def::{AstPtr, NameId, ResolveResult};
-use crate::{DefDatabase, FilePos, TextEdit, WorkspaceEdit};
+use crate::{FilePos, TextEdit, WorkspaceEdit};
+use salsa::Database;
 use smol_str::SmolStr;
 use std::borrow::Cow;
 use syntax::ast::{self, AstNode};
 use syntax::semantic::escape_literal_attr;
-use syntax::{best_token_at_offset, match_ast, SyntaxKind, TextRange};
+use syntax::{SyntaxKind, TextRange, best_token_at_offset, match_ast};
 
 pub type RenameResult<T> = Result<T, String>;
 
 pub(crate) fn prepare_rename(
-    db: &dyn DefDatabase,
+    db: &dyn Database,
     fpos: FilePos,
 ) -> RenameResult<(TextRange, SmolStr)> {
     let (range, name) = find_name(db, fpos).ok_or_else(|| "No references found".to_owned())?;
@@ -19,7 +20,7 @@ pub(crate) fn prepare_rename(
 }
 
 pub(crate) fn rename(
-    db: &dyn DefDatabase,
+    db: &dyn Database,
     fpos: FilePos,
     new_name: &str,
 ) -> RenameResult<WorkspaceEdit> {
@@ -161,10 +162,7 @@ pub(crate) fn rename(
     })
 }
 
-fn find_name(
-    db: &dyn DefDatabase,
-    FilePos { file_id, pos }: FilePos,
-) -> Option<(TextRange, NameId)> {
+fn find_name(db: &dyn Database, FilePos { file_id, pos }: FilePos) -> Option<(TextRange, NameId)> {
     let parse = db.parse(file_id);
     let tok = best_token_at_offset(&parse.syntax_node(), pos)?;
     let mut node = tok.parent_ancestors().find_map(|node| {
@@ -212,9 +210,8 @@ fn find_name(
 
 #[cfg(test)]
 mod tests {
-    use crate::base::SourceDatabase;
     use crate::tests::TestDB;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     fn check_prepare(fixture: &str, expect: Expect) {
         let (db, f) = TestDB::from_fixture(fixture).unwrap();

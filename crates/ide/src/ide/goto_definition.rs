@@ -1,9 +1,10 @@
 use super::NavigationTarget;
 use crate::def::{AstPtr, Expr, Literal, ResolveResult};
-use crate::{DefDatabase, FileId, FilePos, ModuleKind, VfsPath};
+use crate::{FileId, FilePos, ModuleKind, VfsPath};
 use nix_interop::FLAKE_FILE;
+use salsa::Database;
 use syntax::ast::{self, AstNode};
-use syntax::{best_token_at_offset, match_ast, SyntaxKind, SyntaxToken};
+use syntax::{SyntaxKind, SyntaxToken, best_token_at_offset, match_ast};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GotoDefinitionResult {
@@ -12,7 +13,7 @@ pub enum GotoDefinitionResult {
 }
 
 pub(crate) fn goto_definition(
-    db: &dyn DefDatabase,
+    db: &dyn Database,
     FilePos { file_id, pos }: FilePos,
 ) -> Option<GotoDefinitionResult> {
     let parse = db.parse(file_id);
@@ -99,7 +100,7 @@ pub(crate) fn goto_definition(
 }
 
 fn goto_flake_input(
-    db: &dyn DefDatabase,
+    db: &dyn Database,
     file: FileId,
     tok: SyntaxToken,
 ) -> Option<GotoDefinitionResult> {
@@ -144,9 +145,8 @@ fn goto_flake_input(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::base::SourceDatabase;
     use crate::tests::TestDB;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     #[track_caller]
     fn check_no(fixture: &str) {

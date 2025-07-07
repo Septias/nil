@@ -11,16 +11,16 @@ mod text_edit;
 mod tests;
 
 pub use self::ide::{
-    Analysis, AnalysisHost, Assist, AssistKind, Cancelled, CompletionItem, CompletionItemKind,
+    AnalysisHost, Assist, AssistKind, Cancelled, CompletionItem, CompletionItemKind,
     GotoDefinitionResult, HlAttrField, HlKeyword, HlOperator, HlPunct, HlRange, HlRelated, HlTag,
-    HoverResult, InlayHintResult, Link, LinkTarget, NavigationTarget, RenameResult, SymbolTree,
+    HoverResult, Link, LinkTarget, NavigationTarget, RenameResult, SymbolTree,
 };
 pub use base::{
-    Change, FileId, FilePos, FileRange, FileSet, FlakeGraph, FlakeInfo, InFile, SourceDatabase,
-    SourceRoot, SourceRootId, VfsPath,
+    Change, FileId, FilePos, FileRange, FileSet, FlakeGraph, FlakeInfo, InFile, SourceRoot,
+    SourceRootId, VfsPath,
 };
 pub use builtin::BuiltinKind;
 pub use def::{DefDatabase, Module, ModuleKind, ModuleSourceMap, NameKind};
 pub use diagnostic::{Diagnostic, DiagnosticKind, Severity};
 pub use text_edit::{TextEdit, WorkspaceEdit};
-pub use ty::{InferenceResult, TyDatabase};
+pub use ty::InferenceResult;

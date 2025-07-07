@@ -42,7 +42,7 @@ pub enum ModuleKind {
 impl ModuleKind {
     /// Get the [ModuleKind] of a [FileId].
     /// Either look it up from the DB or [guess] it.
-    pub(crate) fn module_kind_query(db: &dyn DefDatabase, file_id: FileId) -> Arc<ModuleKind> {
+    pub(crate) fn module_kind_query(db: &dyn Database, file_id: FileId) -> Arc<ModuleKind> {
         let module = db.module(file_id);
 
         // Check if it is the flake definition. This is always accurate.
@@ -159,12 +159,11 @@ fn peel_expr(module: &Module, expr: ExprId) -> ExprId {
 
 #[cfg(test)]
 mod tests {
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
     use itertools::Itertools;
 
     use super::*;
     use crate::tests::TestDB;
-    use crate::SourceDatabase;
 
     #[track_caller]
     fn check(src: &str, expect: Expect) {
@@ -185,7 +184,9 @@ mod tests {
                 let explicit_inputs = explicit_inputs.keys().sorted().join(",");
                 let param_inputs = param_inputs.keys().sorted().join(",");
                 let outputs = outputs_expr.map(expr_header).unwrap_or_default();
-                format!("FlakeNix: explicit_inputs={explicit_inputs} param_inputs={param_inputs} outputs={outputs}")
+                format!(
+                    "FlakeNix: explicit_inputs={explicit_inputs} param_inputs={param_inputs} outputs={outputs}"
+                )
             }
             ModuleKind::Package { lambda_expr } => {
                 format!("Package: {}", expr_header(*lambda_expr))
@@ -210,7 +211,9 @@ mod tests {
     outputs = { self, nixpkgs, ... }: { };
 }
             "#,
-            expect!["FlakeNix: explicit_inputs=nil param_inputs=nixpkgs outputs={ self, nixpkgs, ... }: { }"],
+            expect![
+                "FlakeNix: explicit_inputs=nil param_inputs=nixpkgs outputs={ self, nixpkgs, ... }: { }"
+            ],
         );
     }
 
@@ -228,7 +231,9 @@ rec {
     outputs = { self, nixpkgs, ... }: rec { };
 }
             "#,
-            expect!["FlakeNix: explicit_inputs=nil param_inputs=nixpkgs outputs={ self, nixpkgs, ... }: rec { }"],
+            expect![
+                "FlakeNix: explicit_inputs=nil param_inputs=nixpkgs outputs={ self, nixpkgs, ... }: rec { }"
+            ],
         );
     }
 

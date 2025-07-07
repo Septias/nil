@@ -23,7 +23,7 @@ mod rewrite_string;
 
 use crate::{DefDatabase, FileRange, TextEdit, WorkspaceEdit};
 use syntax::ast::{self, AstNode};
-use syntax::{best_token_at_offset, NixLanguage};
+use syntax::{NixLanguage, best_token_at_offset};
 
 #[derive(Debug, Clone)]
 pub struct Assist {
@@ -41,7 +41,7 @@ pub enum AssistKind {
     RefactorRewrite,
 }
 
-pub(crate) fn assists(db: &dyn DefDatabase, frange: FileRange) -> Vec<Assist> {
+pub(crate) fn assists(db: &dyn Database, frange: FileRange) -> Vec<Assist> {
     let handlers = [
         add_to_top_level_lambda_param::add_to_top_level_lambda_param,
         convert_to_inherit::convert_to_inherit,
@@ -65,14 +65,14 @@ pub(crate) fn assists(db: &dyn DefDatabase, frange: FileRange) -> Vec<Assist> {
 
 /// Assists for a specific file.
 pub(crate) struct AssistsCtx<'a> {
-    db: &'a dyn DefDatabase,
+    db: &'a DefDatabase,
     frange: FileRange,
     ast: ast::SourceFile,
     assists: Vec<Assist>,
 }
 
 impl<'a> AssistsCtx<'a> {
-    fn new(db: &'a dyn DefDatabase, frange: FileRange) -> Self {
+    fn new(db: &'a DefDatabase, frange: FileRange) -> Self {
         AssistsCtx {
             db,
             frange,
@@ -116,9 +116,9 @@ impl<'a> AssistsCtx<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::tests::TestDB;
-    use crate::SourceDatabase;
+
+    use super::*;
     use expect_test::Expect;
 
     #[track_caller]

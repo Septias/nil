@@ -1,12 +1,13 @@
 use crate::def::{AstPtr, BindingValue, Expr, ExprId, ModuleScopes, NameKind};
 use crate::ty::{self, AttrSource, DisplayConfig, Ty};
-use crate::{FilePos, InferenceResult, Module, ModuleSourceMap, TyDatabase};
-use builtin::{BuiltinKind, ALL_BUILTINS};
+use crate::{FilePos, InferenceResult, Module, ModuleSourceMap};
+use builtin::{ALL_BUILTINS, BuiltinKind};
+use salsa::Database;
 use smol_str::SmolStr;
 use syntax::ast::{self, AstNode};
 use syntax::rowan::TokenAtOffset;
-use syntax::semantic::{escape_literal_attr, is_valid_ident, AttrKind};
-use syntax::{match_ast, SyntaxKind, SyntaxNode, SyntaxToken, TextRange, T};
+use syntax::semantic::{AttrKind, escape_literal_attr, is_valid_ident};
+use syntax::{SyntaxKind, SyntaxNode, SyntaxToken, T, TextRange, match_ast};
 
 use super::hover::TY_DETAILED_DISPLAY;
 
@@ -102,7 +103,7 @@ struct Context<'a> {
 
 /// Get all completions for a file.
 pub(crate) fn completions(
-    db: &dyn TyDatabase,
+    db: &dyn Database,
     fpos @ FilePos { file_id, pos }: FilePos,
     _trigger_char: Option<char>,
 ) -> Vec<CompletionItem> {
@@ -585,9 +586,8 @@ mod tests {
     use std::ops::Range;
     use std::sync::Arc;
 
-    use crate::base::SourceDatabase;
     use crate::tests::TestDB;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
     use nix_interop::nixos_options::{self, NixosOption, NixosOptions};
 
     #[track_caller]
