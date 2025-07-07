@@ -1,18 +1,10 @@
 use super::DefDatabase;
 use crate::{FileId, VfsPath};
+use salsa::{Database, Id};
 use smol_str::SmolStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Path(salsa::InternId);
-
-impl salsa::InternKey for Path {
-    fn from_intern_id(v: salsa::InternId) -> Self {
-        Self(v)
-    }
-    fn as_intern_id(&self) -> salsa::InternId {
-        self.0
-    }
-}
+pub struct Path(Id);
 
 impl Path {
     pub(crate) fn resolve_path_query(db: &dyn DefDatabase, path: Path) -> Option<VfsPath> {
