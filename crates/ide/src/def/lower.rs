@@ -7,11 +7,11 @@ use indexmap::IndexMap;
 use la_arena::Arena;
 use smol_str::SmolStr;
 use std::collections::HashMap;
+use syntax::Parse;
 use syntax::ast::{self, AstNode, HasStringParts, LiteralKind};
 use syntax::semantic::{
-    unescape_string_literal, AttrKind, BindingDesugar, BindingValueKind, HasBindingsDesugar,
+    AttrKind, BindingDesugar, BindingValueKind, HasBindingsDesugar, unescape_string_literal,
 };
-use syntax::Parse;
 
 /// A contextual keyword handled on lowering.
 ///
@@ -19,11 +19,7 @@ use syntax::Parse;
 const KW_CUR_POS: &str = "__curPos";
 
 /// Lower the parser into [Module] and [ModuleSourceMap].
-pub(super) fn lower(
-    db: &dyn DefDatabase,
-    file_id: FileId,
-    parse: Parse,
-) -> (Module, ModuleSourceMap) {
+pub(super) fn lower(db: &dyn Database, file_id: FileId, parse: Parse) -> (Module, ModuleSourceMap) {
     let mut ctx = LowerCtx {
         db,
         file_id,
@@ -44,7 +40,7 @@ pub(super) fn lower(
 
 /// Context needed while executing [lower].
 struct LowerCtx<'a> {
-    db: &'a dyn DefDatabase,
+    db: &'a DefDatabase,
     file_id: FileId,
     module: Module,
     source_map: ModuleSourceMap,
@@ -615,7 +611,7 @@ mod tests {
     use crate::def::{Expr, Literal};
     use crate::tests::TestDB;
     use crate::{DefDatabase, FileId};
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
     use std::fmt::Write;
     use syntax::parse_file;
 

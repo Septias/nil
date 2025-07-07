@@ -1,4 +1,4 @@
-use strum_macros::{AsRefStr, Display, EnumDiscriminants};
+use salsa::Database;
 
 /// Macro to create types.
 #[rustfmt::skip]
@@ -81,30 +81,13 @@ mod union_find;
 mod tests;
 
 use crate::def::NameId;
-use crate::{DefDatabase, FileId, ModuleKind, SourceRootId};
-use std::collections::HashMap;
+use crate::{FileId, ModuleKind};
 use std::fmt;
 use std::sync::Arc;
 
 pub use display::{Config as DisplayConfig, TyDisplay};
 pub use infer::InferenceResult;
 use smol_str::SmolStr;
-
-/// Database for types.
-#[salsa::query_group(TyDatabaseStorage)]
-pub trait TyDatabase: DefDatabase {
-    #[salsa::invoke(module_expected_ty)]
-    fn module_expected_ty(&self, file: FileId) -> Option<Ty>;
-
-    #[salsa::invoke(infer::infer_query)]
-    fn infer(&self, file: FileId) -> Arc<InferenceResult>;
-
-    #[salsa::invoke(convert::options_to_config_ty)]
-    fn nixos_config_ty(&self) -> Ty;
-
-    #[salsa::invoke(convert::flake_input_tys)]
-    fn flake_input_tys(&self, sid: SourceRootId) -> Arc<HashMap<String, Ty>>;
-}
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Ty {
@@ -235,7 +218,7 @@ pub enum AttrSource {
 }
 
 /// Returns the expected type for a [FileId].
-fn module_expected_ty(db: &dyn TyDatabase, file: FileId) -> Option<Ty> {
+fn module_expected_ty(db: &dyn Database, file: FileId) -> Option<Ty> {
     match &*db.module_kind(file) {
         ModuleKind::Unknown => None,
         ModuleKind::FlakeNix {

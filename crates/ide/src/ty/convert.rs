@@ -4,8 +4,9 @@ use std::sync::Arc;
 
 use nix_interop::flake_output::{FlakeOutput, Type as OutputTy};
 use nix_interop::nixos_options::Ty as OptionTy;
+use salsa::Database;
 
-use crate::{SourceRootId, TyDatabase};
+use crate::SourceRootId;
 
 use super::known::FLAKE_OUTPUT_GENERIC_SYSTEM_FIELDS;
 use super::{AttrSource, Attrset, Ty};
@@ -13,7 +14,7 @@ use super::{AttrSource, Attrset, Ty};
 // TODO: Get this at runtime.
 const NIX_SYSTEM: &str = "x86_64-linux";
 
-pub(crate) fn options_to_config_ty(db: &dyn TyDatabase) -> Ty {
+pub(crate) fn options_to_config_ty(db: &dyn Database) -> Ty {
     let opts = db.nixos_options();
     let fields = opts
         .iter()
@@ -47,7 +48,7 @@ fn from_raw_ty(ty: &OptionTy) -> Ty {
 }
 
 /// Get the input types of all flake inputs.
-pub(crate) fn flake_input_tys(db: &dyn TyDatabase, sid: SourceRootId) -> Arc<HashMap<String, Ty>> {
+pub(crate) fn flake_input_tys(db: &dyn Database, sid: SourceRootId) -> Arc<HashMap<String, Ty>> {
     let Some(info) = db.source_root_flake_info(sid) else {
         return Arc::default();
     };

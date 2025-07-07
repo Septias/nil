@@ -13,14 +13,11 @@ mod rename;
 mod symbol_hierarchy;
 mod syntax_highlighting;
 
-use crate::base::SourceDatabaseStorage;
-use crate::def::DefDatabaseStorage;
-use crate::ty::TyDatabaseStorage;
 use crate::{
     Change, Diagnostic, FileId, FilePos, FileRange, FileSet, SourceRoot, VfsPath, WorkspaceEdit,
 };
 use nix_interop::DEFAULT_IMPORT_FILE;
-use salsa::{Database, Durability, ParallelDatabase};
+use salsa::{Database, Durability};
 use smol_str::SmolStr;
 use std::fmt;
 use std::sync::Arc;
@@ -51,20 +48,14 @@ pub use salsa::Cancelled;
 pub type Cancellable<T> = Result<T, Cancelled>;
 
 /// Root database of ide.
-#[salsa::database(SourceDatabaseStorage, DefDatabaseStorage, TyDatabaseStorage)]
+#[salsa::db]
+#[derive(Clone)]
 struct RootDatabase {
     storage: salsa::Storage<Self>,
 }
 
+#[salsa::db]
 impl salsa::Database for RootDatabase {}
-
-impl salsa::ParallelDatabase for RootDatabase {
-    fn snapshot(&self) -> salsa::Snapshot<Self> {
-        salsa::Snapshot::new(RootDatabase {
-            storage: self.storage.snapshot(),
-        })
-    }
-}
 
 impl fmt::Debug for RootDatabase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -74,15 +65,13 @@ impl fmt::Debug for RootDatabase {
 
 impl Default for RootDatabase {
     fn default() -> Self {
-        use crate::SourceDatabase;
-
         let mut db = Self {
             storage: salsa::Storage::default(),
         };
 
-        crate::def::ParseQuery
-            .in_db_mut(&mut db)
-            .set_lru_capacity(DEFAULT_LRU_CAP);
+        // crate::def::ParseQuery
+        //     .in_db_mut(&mut db)
+        //     .set_lru_capacity(DEFAULT_LRU_CAP);
 
         db.set_flake_graph_with_durability(Arc::default(), Durability::MEDIUM);
         db.set_nixos_options_with_durability(Arc::default(), Durability::MEDIUM);
@@ -126,12 +115,6 @@ impl AnalysisHost {
         self.request_cancellation();
         change.apply(&mut self.db);
     }
-}
-
-/// DB for analysis.
-#[derive(Debug)]
-pub struct Analysis {
-    db: salsa::Snapshot<RootDatabase>,
 }
 
 impl Analysis {

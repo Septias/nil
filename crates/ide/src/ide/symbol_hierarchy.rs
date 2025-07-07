@@ -1,5 +1,6 @@
 use crate::def::{AstPtr, NameId};
-use crate::{DefDatabase, FileId, Module, ModuleSourceMap, NameKind};
+use crate::{FileId, Module, ModuleSourceMap, NameKind};
+use salsa::Database;
 use smol_str::SmolStr;
 use syntax::ast::{self, AstNode};
 use syntax::rowan::WalkEvent;
@@ -16,7 +17,7 @@ pub struct SymbolTree {
     pub children: Vec<SymbolTree>,
 }
 
-pub(crate) fn symbol_hierarchy(db: &dyn DefDatabase, file: FileId) -> Vec<SymbolTree> {
+pub(crate) fn symbol_hierarchy(db: &dyn Database, file: FileId) -> Vec<SymbolTree> {
     let parse = db.parse(file);
     let module = db.module(file);
     let source_map = db.source_map(file);
@@ -139,7 +140,7 @@ impl Collector<'_, '_> {
 mod tests {
     use super::*;
     use crate::tests::TestDB;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
     use std::fmt::Write;
 
     #[track_caller]

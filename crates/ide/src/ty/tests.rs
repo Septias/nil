@@ -2,10 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::tests::TestDB;
-use crate::{
-    DefDatabase, FlakeGraph, FlakeInfo, InferenceResult, Module, SourceDatabase, TyDatabase,
-};
-use expect_test::{expect, Expect};
+use crate::{FlakeGraph, FlakeInfo, InferenceResult, Module};
+use expect_test::{Expect, expect};
 use nix_interop::flake_output::{FlakeOutput, Type};
 
 use super::Ty;
@@ -245,7 +243,9 @@ fn flake_file() {
     outputs = { self, nixpkgs }: { };
 }
               ",
-        expect!["{ inputs: { }, lastModified: int, lastModifiedDate: string, narHash: string, outPath: string, outputs: { }, rev: string, revCount: int, shortRev: string, sourceInfo: { dir: string, id: string, narHash: string, owner: string, ref: string, repo: string, rev: string, submodules: bool, type: string, url: string }, submodules: bool }"],
+        expect![
+            "{ inputs: { }, lastModified: int, lastModifiedDate: string, narHash: string, outPath: string, outputs: { }, rev: string, revCount: int, shortRev: string, sourceInfo: { dir: string, id: string, narHash: string, owner: string, ref: string, repo: string, rev: string, submodules: bool, type: string, url: string }, submodules: bool }"
+        ],
     );
 }
 
@@ -351,8 +351,9 @@ fn input_flake_ty() {
         )])),
     )]));
 
-    let expect_output =
-        expect!["{ legacyPackages: { x86_64-linux: { hello: { args: [string], builder: string, name: string, system: string } }, …: { hello: { args: [string], builder: string, name: string, system: string } } } }"];
+    let expect_output = expect![
+        "{ legacyPackages: { x86_64-linux: { hello: { args: [string], builder: string, name: string, system: string } }, …: { hello: { args: [string], builder: string, name: string, system: string } } } }"
+    ];
 
     let (mut db, file) = TestDB::single_file(src).unwrap();
     let sid = db.file_source_root(file);

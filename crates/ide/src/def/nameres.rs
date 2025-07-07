@@ -26,7 +26,7 @@ impl ops::Index<ScopeId> for ModuleScopes {
 }
 
 impl ModuleScopes {
-    pub(crate) fn module_scopes_query(db: &dyn DefDatabase, file_id: FileId) -> Arc<Self> {
+    pub(crate) fn module_scopes_query(db: &dyn Database, file_id: FileId) -> Arc<Self> {
         let module = db.module(file_id);
         let mut this = Self {
             scopes: Arena::new(),
@@ -238,7 +238,7 @@ pub struct NameResolution {
 }
 
 impl NameResolution {
-    pub(crate) fn name_resolution_query(db: &dyn DefDatabase, file_id: FileId) -> Arc<Self> {
+    pub(crate) fn name_resolution_query(db: &dyn Database, file_id: FileId) -> Arc<Self> {
         let module = db.module(file_id);
         let scopes = db.scopes(file_id);
         let mut resolve_map = module
@@ -325,7 +325,7 @@ impl NameResolution {
     /// Get all undefined names.
     pub fn to_diagnostics(
         &self,
-        db: &dyn DefDatabase,
+        db: &dyn Database,
         file_id: FileId,
     ) -> impl Iterator<Item = Diagnostic> + '_ {
         let source_map = db.source_map(file_id);
@@ -351,7 +351,7 @@ pub struct NameReference {
 }
 
 impl NameReference {
-    pub(crate) fn name_reference_query(db: &dyn DefDatabase, file_id: FileId) -> Arc<Self> {
+    pub(crate) fn name_reference_query(db: &dyn Database, file_id: FileId) -> Arc<Self> {
         let name_res = db.name_resolution(file_id);
         let mut this = Self::default();
         for (expr, resolved) in name_res.iter() {

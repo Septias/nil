@@ -1,10 +1,11 @@
 //! This is actually so-called "semantic highlighting".
 //! Ref: <https://github.com/rust-lang/rust-analyzer/blob/a670ff888437f4b6a3d24cc2996e9f969a87cbae/crates/ide/src/syntax_highlighting/tags.rs>
+use crate::FileId;
 use crate::def::{AstPtr, Expr, Literal, NameKind, ResolveResult};
-use crate::{DefDatabase, FileId};
-use builtin::{BuiltinKind, ALL_BUILTINS};
+use builtin::{ALL_BUILTINS, BuiltinKind};
+use salsa::Database;
 use syntax::ast::AstNode;
-use syntax::{ast, match_ast, SyntaxKind, SyntaxToken, TextRange, T};
+use syntax::{SyntaxKind, SyntaxToken, T, TextRange, ast, match_ast};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HlRange {
@@ -69,11 +70,7 @@ pub enum HlPunct {
     Ellipsis,
 }
 
-pub(crate) fn highlight(
-    db: &dyn DefDatabase,
-    file: FileId,
-    range: Option<TextRange>,
-) -> Vec<HlRange> {
+pub(crate) fn highlight(db: &dyn Database, file: FileId, range: Option<TextRange>) -> Vec<HlRange> {
     let root_node = db.parse(file).syntax_node();
     let source_map = db.source_map(file);
     let nameres = db.name_resolution(file);
@@ -210,9 +207,9 @@ pub(crate) fn highlight(
 
 #[cfg(test)]
 mod tests {
+    use crate::FilePos;
     use crate::tests::TestDB;
-    use crate::{DefDatabase, FilePos};
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     #[track_caller]
     fn check(fixture: &str, expect: Expect) {

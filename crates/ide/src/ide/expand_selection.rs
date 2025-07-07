@@ -1,10 +1,10 @@
 use crate::{DefDatabase, FileRange};
-use syntax::{best_token_at_offset, NodeOrToken, SyntaxKind, SyntaxNode, TextRange, T};
+use syntax::{NodeOrToken, SyntaxKind, SyntaxNode, T, TextRange, best_token_at_offset};
 
 /// Interesting parent ranges covering the given range.
 /// Returns all ranges from the smallest to the largest.
 pub(crate) fn expand_selection(
-    db: &dyn DefDatabase,
+    db: &dyn Database,
     FileRange { file_id, range }: FileRange,
 ) -> Option<Vec<TextRange>> {
     let parse = db.parse(file_id);
@@ -84,9 +84,8 @@ fn is_node_kind_good(kind: SyntaxKind) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::base::SourceDatabase;
     use crate::tests::TestDB;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     fn check(fixture: &str, expect: Expect) {
         let (db, f) = TestDB::from_fixture(fixture).unwrap();

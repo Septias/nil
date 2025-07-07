@@ -1,12 +1,13 @@
 use crate::def::{AstPtr, Expr, ResolveResult};
 use crate::ty::{DisplayConfig, Ty};
-use crate::{FilePos, NameKind, TyDatabase};
+use crate::{FilePos, NameKind};
 use builtin::ALL_BUILTINS;
 use if_chain::if_chain;
+use salsa::Database;
 use std::fmt::Write;
 use syntax::ast::{self, AstNode};
 use syntax::semantic::AttrKind;
-use syntax::{best_token_at_offset, match_ast, TextRange};
+use syntax::{TextRange, best_token_at_offset, match_ast};
 
 // Kinda detailed, but don't flood users with thousands of fields for `pkgs`.
 pub const TY_DETAILED_DISPLAY: DisplayConfig = DisplayConfig {
@@ -23,7 +24,7 @@ pub struct HoverResult {
     pub markup: String,
 }
 
-pub(crate) fn hover(db: &dyn TyDatabase, FilePos { file_id, pos }: FilePos) -> Option<HoverResult> {
+pub(crate) fn hover(db: &dyn Database, FilePos { file_id, pos }: FilePos) -> Option<HoverResult> {
     let parse = db.parse(file_id);
     let tok = best_token_at_offset(&parse.syntax_node(), pos)?;
     let mut name_node = None;
@@ -182,9 +183,8 @@ fn hover_builtin(name: &str, range: TextRange) -> Option<HoverResult> {
 
 #[cfg(test)]
 mod tests {
-    use crate::base::SourceDatabase;
     use crate::tests::TestDB;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     #[track_caller]
     fn check(fixture: &str, full: &str, expect: Expect) {

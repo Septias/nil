@@ -1,10 +1,11 @@
 use super::union_find::UnionFind;
-use super::{known, AttrSource, TyDatabase};
+use super::{AttrSource, known};
 use crate::def::{
     BindingValue, Bindings, Expr, ExprId, Literal, NameId, NameResolution, ResolveResult,
 };
 use crate::{FileId, Module};
 use la_arena::ArenaMap;
+use salsa::Database;
 use smol_str::SmolStr;
 use std::collections::btree_map::{BTreeMap, Entry};
 use std::mem;
@@ -78,14 +79,14 @@ impl InferenceResult {
 }
 
 /// Infer a type for a DB-file.
-pub(crate) fn infer_query(db: &dyn TyDatabase, file: FileId) -> Arc<InferenceResult> {
+pub(crate) fn infer_query(db: &dyn Database, file: FileId) -> Arc<InferenceResult> {
     let expect_ty = db.module_expected_ty(file);
     infer_with(db, file, expect_ty)
 }
 
 /// Type inference with expected type.
 pub(crate) fn infer_with(
-    db: &dyn TyDatabase,
+    db: &dyn Database,
     file: FileId,
     expect_ty: Option<super::Ty>,
 ) -> Arc<InferenceResult> {

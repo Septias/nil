@@ -24,10 +24,11 @@
 use super::{BindingValue, DefDatabase, Expr, ExprId, NameId, ResolveResult};
 use crate::{Diagnostic, DiagnosticKind, FileId, ModuleKind};
 use la_arena::ArenaMap;
+use salsa::Database;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use syntax::ast::{self, AstNode};
 use syntax::TextRange;
+use syntax::ast::{self, AstNode};
 
 fn should_ignore(name: &str) -> bool {
     name.starts_with('_')
@@ -44,7 +45,7 @@ impl LivenessCheckResult {
     /// Turn the liveness check results into DB Diagnostics.
     pub fn to_diagnostics<'a>(
         &'a self,
-        db: &dyn DefDatabase,
+        db: &dyn Database,
         file: FileId,
     ) -> impl Iterator<Item = Diagnostic> + 'a {
         let source_map = db.source_map(file);
@@ -79,10 +80,7 @@ impl LivenessCheckResult {
 }
 
 /// Query to the DB to get liveness faults.
-pub(crate) fn liveness_check_query(
-    db: &dyn DefDatabase,
-    file_id: FileId,
-) -> Arc<LivenessCheckResult> {
+pub(crate) fn liveness_check_query(db: &dyn Database, file_id: FileId) -> Arc<LivenessCheckResult> {
     let module = db.module(file_id);
     let name_res = db.name_resolution(file_id);
 
@@ -229,7 +227,6 @@ pub(crate) fn liveness_check_query(
 #[cfg(test)]
 mod tests {
     use crate::tests::TestDB;
-    use crate::DefDatabase;
 
     #[track_caller]
     fn check(fixture: &str) {

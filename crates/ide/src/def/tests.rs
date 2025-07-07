@@ -1,6 +1,5 @@
-use super::DefDatabase;
 use crate::tests::TestDB;
-use crate::{FlakeInfo, ModuleKind, SourceDatabase, VfsPath};
+use crate::{FlakeInfo, ModuleKind, VfsPath};
 use expect_test::expect;
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};

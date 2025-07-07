@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use syntax::{TextRange, TextSize};
 
+use crate::DefDatabase;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FileId(pub u32);
 
@@ -246,33 +248,6 @@ impl FileRange {
     }
 }
 
-/// The DB storing files.
-/// [FileID] and [SourceRootId] are used.
-#[salsa::query_group(SourceDatabaseStorage)]
-pub trait SourceDatabase {
-    #[salsa::input]
-    fn file_content(&self, file_id: FileId) -> Arc<str>;
-
-    #[salsa::input]
-    fn source_root(&self, sid: SourceRootId) -> Arc<SourceRoot>;
-
-    fn source_root_flake_info(&self, sid: SourceRootId) -> Option<Arc<FlakeInfo>>;
-
-    #[salsa::input]
-    fn file_source_root(&self, file_id: FileId) -> SourceRootId;
-
-    #[salsa::input]
-    fn flake_graph(&self) -> Arc<FlakeGraph>;
-
-    #[salsa::input]
-    fn nixos_options(&self) -> Arc<NixosOptions>;
-}
-
-/// Return the flake info for a [SourceRootId].
-fn source_root_flake_info(db: &dyn SourceDatabase, sid: SourceRootId) -> Option<Arc<FlakeInfo>> {
-    db.flake_graph().nodes.get(&sid).cloned().map(Arc::new)
-}
-
 /// A change to the [SourceDataBase].
 /// Use [Self::apply] to apply all changes to the DB.
 #[derive(Default, Clone, PartialEq, Eq)]
@@ -304,7 +279,7 @@ impl Change {
         self.file_changes.push((file_id, content));
     }
 
-    pub(crate) fn apply(self, db: &mut dyn SourceDatabase) {
+    pub(crate) fn apply(self, db: &mut DefDatabase) {
         if let Some(flake_graph) = self.flake_graph {
             db.set_flake_graph_with_durability(Arc::new(flake_graph), Durability::MEDIUM);
         }
