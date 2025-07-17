@@ -123,8 +123,6 @@ pub(crate) fn infer_query(db: &dyn Database, file: FileId) -> Arc<InferenceResul
 /// Type inference with expected type.
 pub(crate) fn infer_with(
     db: &dyn Database,
-    file: FileId,
-    db: &dyn Database,
     file_id: FileId,
     expect_ty: Option<super::Ty>,
 ) -> Arc<InferenceResult> {
@@ -137,6 +135,7 @@ pub(crate) fn infer_with(
         nameres: &nameres,
         source_map: &source_map,
         with: vec![],
+        diagnostics: Vec::new(),
     };
     Arc::new(ctx.finish())
 }
@@ -146,6 +145,7 @@ struct InferCtx<'db> {
     nameres: &'db NameResolution,
     source_map: &'db ModuleSourceMap,
     with: Vec<Ty>,
+    diagnostics: Vec<crate::diagnostic::Diagnostic>,
 }
 
 impl InferCtx<'_> {
@@ -622,14 +622,10 @@ impl InferCtx<'_> {
             }
 
             // Language constructs
-            Expr::Attrset(Bindings) => {
-                let Bindings {
-                    attrs,
-                    inherit,
-                    is_recursive,
-                } = todo!();
-                if *is_recursive {
-                    let vars: Vec<_> = attrs
+            Expr::Attrset(bindings) => {
+                if bindings.is_recursive {
+                    let vars: Vec<_> = bindings
+                        .attrs
                         .iter()
                         .map(|(ident, _expr)| {
                             (
@@ -639,14 +635,14 @@ impl InferCtx<'_> {
                         })
                         .collect();
 
-                    let mut inherits = self.load_inherit(lvl, inherit)?;
+                    let mut inherits = self.load_inherit(lvl, &bindings.inhert)?;
                     inherits.extend(vars.clone());
 
                     self.with_scope(inherits, |ctx| {
                         let names = vars.into_iter().map(|(name, var)| {
                             (name, var.into_type().unwrap().into_var().unwrap())
                         });
-                        let expressions = attrs.iter().map(|(_, expr)| expr);
+                        let expressions = bindings.attrs.iter().map(|(_, expr)| expr);
 
                         let (ok, errs): (Vec<_>, Vec<_>) = names
                             .into_iter()
@@ -678,13 +674,14 @@ impl InferCtx<'_> {
                         }
                     })
                 } else {
-                    let mut vars: HashMap<_, _> = attrs
+                    let mut vars: HashMap<_, _> = bindings
+                        .attrs
                         .iter()
                         .map(|(ident, expr)| {
                             (ident.name.to_string(), type_term(self, expr, lvl).unwrap())
                         })
                         .collect();
-                    let ok = self.load_inherit(lvl, inherit);
+                    let ok = self.load_inherit(lvl, &bindings.inhert);
                     vars.extend(
                         ok?.into_iter()
                             .map(|(name, ty)| (name.to_string(), ty.instantiate(self, lvl))),
@@ -693,30 +690,27 @@ impl InferCtx<'_> {
                 }
             }
 
-            Expr::LetIn {
-                bindings,
-                inherit,
-                body,
-                span,
-            } => {
-                let binds: Vec<_> = bindings
-                    .iter()
-                    .map(|(name, _)| {
-                        (
-                            name.name.to_string(),
-                            ContextType::Type(Ty::Var(self.fresh_var(lvl + 1))),
-                        )
-                    })
-                    .collect();
+            Expr::LetIn(bindings, body) => {
+                if bindings.is_recursive {
+                    let vars: Vec<_> = bindings
+                        .attrs
+                        .iter()
+                        .map(|(ident, _expr)| {
+                            (
+                                ident.name.to_string(),
+                                ContextType::Type(Ty::Var(self.fresh_var(lvl + 1))),
+                            )
+                        })
+                        .collect();
 
-                let mut inherits = self.load_inherit(lvl, inherit)?;
-                inherits.extend(binds.clone());
-                let (ok, err): (Vec<_>, Vec<_>) = self
-                    .with_scope(inherits, |ctx| {
-                        let names = binds.into_iter().map(|(name, var)| {
+                    let mut inherits = self.load_inherit(lvl, &bindings.inhert)?;
+                    inherits.extend(vars.clone());
+
+                    self.with_scope(inherits, |ctx| {
+                        let names = vars.into_iter().map(|(name, var)| {
                             (name, var.into_type().unwrap().into_var().unwrap())
                         });
-                        let expressions = bindings.iter().map(|(_, expr)| expr);
+                        let expressions = bindings.attrs.iter().map(|(_, expr)| expr);
 
                         names
                             .into_iter()
@@ -729,7 +723,11 @@ impl InferCtx<'_> {
                                     )],
                                     |ctx| type_term(ctx, rhs, lvl + 1),
                                 )?;
-                                let bind = bindings.iter().find(|(n, _)| n.name == *name).unwrap();
+                                let bind = bindings
+                                    .attrs
+                                    .iter()
+                                    .find(|(n, _)| n.name == *name)
+                                    .unwrap();
                                 bind.0.var.set(coalesc_type(ctx, &ty)).unwrap();
                                 ctx.constrain(&ty, &Ty::Var(e_ty.clone()))
                                     .map_err(|e| e.span(rhs.get_span()))?;
@@ -749,24 +747,35 @@ impl InferCtx<'_> {
                         Err(v) => Either::Right(v),
                     });
 
-                if !err.is_empty() {
-                    return Err(SpannedError {
-                        error: InferError::MultipleErrors(err),
-                        span: span.clone(),
-                    });
-                }
+                    if !err.is_empty() {
+                        return Err(SpannedError {
+                            error: InferError::MultipleErrors(err),
+                            span: span.clone(),
+                        });
+                    }
 
-                let ret = self.with_scope(ok, |ctx| type_term(ctx, body, lvl))?;
-                Ok(ret)
+                    let ret = self.with_scope(ok, |ctx| type_term(ctx, *body, lvl))?;
+                    Ok(ret)
+                } else {
+                    let mut vars: HashMap<_, _> = bindings
+                        .attrs
+                        .iter()
+                        .map(|(ident, expr)| {
+                            (ident.name.to_string(), type_term(self, expr, lvl).unwrap())
+                        })
+                        .collect();
+                    let ok = self.load_inherit(lvl, &bindings.inhert);
+                    vars.extend(
+                        ok?.into_iter()
+                            .map(|(name, ty)| (name.to_string(), ty.instantiate(self, lvl))),
+                    );
+                    Ok(Record(vars))
+                }
             }
 
-            Expr::Lambda {
-                pattern,
-                body,
-                span,
-            } => {
+            Expr::Lambda(param, pat, body) => {
                 let mut added = vec![];
-                let ty = match pattern {
+                let ty = match pat {
                     crate::ast::Pattern::Record {
                         patterns,
                         is_wildcard,
@@ -880,11 +889,7 @@ impl InferCtx<'_> {
                     Ok(ty1)
                 }
             }
-            Expr::Assert {
-                condition,
-                expr,
-                span: _,
-            } => {
+            Expr::Assert(condition, expr) => {
                 let ty = type_term(self, condition, lvl)?;
                 match ty {
                     Ty::Bool => (),
@@ -906,10 +911,10 @@ impl InferCtx<'_> {
                 type_term(self, expr, lvl)
             }
 
-            Expr::List { exprs, span: _ } => Ok({
+            Expr::List(exprs) => Ok({
                 let expr = exprs
                     .iter()
-                    .flat_map(|ast| type_term(self, ast, lvl))
+                    .flat_map(|ast| type_term(self, *ast, lvl))
                     .collect_vec();
 
                 if let Some(fst) = expr.first() {
@@ -1058,9 +1063,11 @@ impl InferCtx<'_> {
             expr_ty_map.insert(expr, i.collect(ty));
         }
 
+        // Optionally: println!("DIAGNOSTICS: {:?}", self.diagnostics);
         InferenceResult {
             name_ty_map,
             expr_ty_map,
+            // TODO: add diagnostics to InferenceResult if needed
         }
     }
 }
