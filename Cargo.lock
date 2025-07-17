@@ -496,6 +496,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
 name = "icu_collections"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1243,6 +1249,7 @@ version = "0.17.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c2e352df550bf019da7b16164ed2f7fa107c39653d1311d1bba42d1582ff7"
 dependencies = [
+ "heck 0.3.3",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
@@ -1391,11 +1398,11 @@ version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c77a8c5abcaf0f9ce05d62342b7d298c346515365c36b673df4ebe3ced01fde8"
 dependencies = [
- "heck",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "rustversion",
- "syn",
+ "syn 2.0.104",
 ]
 
 [[package]]
