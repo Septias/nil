@@ -634,6 +634,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "syntax",
+ "thiserror",
  "url",
 ]
 

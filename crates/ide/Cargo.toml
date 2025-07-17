@@ -22,6 +22,7 @@ syntax = { path = "../syntax" }
 url = "2.3.1"
 strum = "*"
 strum_macros ="*"
+thiserror = "*"
 
 [dev-dependencies]
 anyhow = "1.0.60"
