@@ -221,7 +221,12 @@ impl InferCtx<'_> {
                     match fs0.iter().find(|(n0, _)| *n0 == n1) {
                         Some((_, t0)) => self.constrain_inner(t0, t1, cache),
                         None => {
-                            todo!()
+                            // Field missing: emit diagnostic
+                            self.diagnostics.push(crate::diagnostic::Diagnostic::new(
+                                /* TODO: get range for n1 */ Default::default(),
+                                crate::diagnostic::DiagnosticKind::TypeMismatch,
+                            ));
+                            continue;
                         }
                     }
                 }
@@ -264,19 +269,17 @@ impl InferCtx<'_> {
                         }
                     }
                     if !keys.is_empty() {
-                        return Err(InferError::TooManyField {
-                            field: keys.into_iter().next().unwrap().clone(),
-                        });
+                        return;
                     }
                 }
             }
 
             (Ty::Optional(o1), Ty::Optional(o0)) => {
-                constrain_inner(context, o0, o1, cache)?;
+                self.constrain_inner(o0, o1, cache);
             }
 
             (Ty::List(ls1), Ty::List(ls2)) if ls1.len() == 1 && ls2.len() == 1 => {
-                constrain_inner(context, &ls1[0], &ls2[0], cache)?;
+                self.constrain_inner(&ls1[0], &ls2[0], cache);
             }
 
             // application
@@ -285,13 +288,12 @@ impl InferCtx<'_> {
             (Ty::Var(lhs), rhs) if rhs.level() <= lhs.level => {
                 lhs.upper_bounds.borrow_mut().push(rhs.clone());
                 for lower_bound in lhs.lower_bounds.borrow().iter() {
-                    constrain_inner(context, lower_bound, rhs, cache)?;
+                    self.constrain_inner(lower_bound, rhs, cache);
                 }
             }
 
             (Ty::Pattern(pat, _), rhs @ Ty::Var(_)) => {
-                constrain_inner(
-                    context,
+                self.constrain_inner(
                     &Ty::Record(
                         pat.clone()
                             .into_iter()
@@ -300,7 +302,7 @@ impl InferCtx<'_> {
                     ),
                     rhs,
                     cache,
-                )?;
+                );
             }
 
             // let-binding
@@ -308,27 +310,25 @@ impl InferCtx<'_> {
             (lhs, Ty::Var(rhs)) if lhs.level() <= rhs.level => {
                 rhs.lower_bounds.borrow_mut().push(lhs.clone());
                 for upper_bound in rhs.upper_bounds.borrow().iter() {
-                    constrain_inner(context, lhs, upper_bound, cache)?;
+                    self.constrain_inner(lhs, upper_bound, cache);
                 }
             }
             (Ty::Var(_), rhs) => {
-                let rhs_extruded = extrude(context, rhs, false, lhs.level(), &mut HashMap::new());
-                constrain_inner(context, lhs, &rhs_extruded, cache)?;
+                let rhs_extruded = extrude(self, rhs, false, lhs.level(), &mut HashMap::new());
+                self.constrain_inner(lhs, &rhs_extruded, cache);
             }
             (lhs, Ty::Var(_)) => {
-                let lhs_extruded = extrude(context, lhs, true, rhs.level(), &mut HashMap::new());
-                constrain_inner(context, &lhs_extruded, rhs, cache)?;
+                let lhs_extruded = extrude(self, lhs, true, rhs.level(), &mut HashMap::new());
+                self.constrain_inner(&lhs_extruded, rhs, cache);
             }
 
             _ => {
-                return Err(InferError::CannotConstrain {
-                    lhs: lhs.clone(),
-                    rhs: rhs.clone(),
-                });
+                self.diagnostics.push(crate::diagnostic::Diagnostic::new(
+                    /* TODO: get range for lhs/rhs */ Default::default(),
+                    crate::diagnostic::DiagnosticKind::TypeMismatch,
+                ));
             }
         }
-
-        Ok(())
     }
 
     /// Subroutine of [infer_expr].
@@ -462,20 +462,20 @@ impl InferCtx<'_> {
                             Ty::List(l.clone())
                         }
                         (Ty::List(_), ty2) => todo!(), //TODO: add err here
-                        (ty1, _) => Err(SpannedError {
-                            error: InferError::TypeMismatch {
-                                expected: TypeName::List,
-                                found: ty1.get_name(),
-                            },
-                            span: lhs.get_span().clone(),
-                        }),
+                        (ty1, _) => {
+                            self.diagnostics.push(crate::diagnostic::Diagnostic::new(
+                                /* TODO: get range for ty1/ty2 */ Default::default(),
+                                crate::diagnostic::DiagnosticKind::TypeMismatch,
+                            ));
+                            Ty::List(vec![])
+                        }
                     },
 
                     BinaryOpKind::Update => match (&ty1, &ty2) {
                         (Ty::Record(rc1), Ty::Record(rc2)) => {
                             let mut rc = rc1.clone();
                             rc.extend(rc2.clone());
-                            Ok(Ty::Record(rc))
+                            Ty::Record(rc)
                         }
 
                         (Ty::Var(v1), Ty::Var(v2)) => {
@@ -486,30 +486,30 @@ impl InferCtx<'_> {
 
                             let mut rc1 = v1.as_record().unwrap_or_default();
                             rc1.extend(v2.as_record().unwrap_or_default());
-                            Ok(Ty::Record(rc1))
+                            Ty::Record(rc1)
                         }
 
                         (Ty::Record(rc1), var @ Ty::Var(_))
                         | (var @ Ty::Var(_), Ty::Record(rc1)) => {
                             self.constrain(var, &Ty::Record(HashMap::new()))
                                 .map_err(|e| e.span(rhs.get_span()))?;
-                            Ok(Ty::Record(rc1.clone()))
+                            Ty::Record(rc1.clone())
                         }
-                        (Ty::Record(_), ty2) => Err(SpannedError {
-                            error: InferError::TypeMismatch {
-                                expected: TypeName::Record,
-                                found: ty2.get_name(),
-                            },
-                            span: rhs.get_span().clone(),
-                        }),
+                        (Ty::Record(_), ty2) => {
+                            self.diagnostics.push(crate::diagnostic::Diagnostic::new(
+                                /* TODO: get range for ty2 */ Default::default(),
+                                crate::diagnostic::DiagnosticKind::TypeMismatch,
+                            ));
+                            Ty::Record(vec![])
+                        }
 
-                        (ty1, _) => Err(SpannedError {
-                            error: InferError::TypeMismatch {
-                                expected: TypeName::Record,
-                                found: ty1.get_name(),
-                            },
-                            span: lhs.get_span().clone(),
-                        }),
+                        (ty1, _) => {
+                            self.diagnostics.push(crate::diagnostic::Diagnostic::new(
+                                /* TODO: get range for ty1 */ Default::default(),
+                                crate::diagnostic::DiagnosticKind::TypeMismatch,
+                            ));
+                            Ty::Record(vec![])
+                        }
                     },
 
                     // Primitives
@@ -518,12 +518,12 @@ impl InferCtx<'_> {
                             .map_err(|e| e.span(lhs.get_span()))?;
                         self.constrain(&ty2, &Ty::Number)
                             .map_err(|e| e.span(rhs.get_span()))?;
-                        Ok(Ty::Number)
+                        Ty::Number
                     }
                     BinaryOpKind::Add => {
                         match (&ty1, &ty2) {
-                            (Ty::Number, Ty::Number) => Ok(Ty::Number),
-                            (Ty::String | Ty::Path, Ty::String | Ty::Path) => Ok(Ty::String),
+                            (Ty::Number, Ty::Number) => Ty::Number,
+                            (Ty::String | Ty::Path, Ty::String | Ty::Path) => Ty::String,
                             (Ty::Var(v1), Ty::Var(v2)) => {
                                 // TODO: is this correct?
                                 v1.lower_bounds.borrow_mut().extend([
@@ -538,43 +538,41 @@ impl InferCtx<'_> {
                                     Ty::Path,
                                 ]);
 
-                                Ok(Ty::Union(
+                                Ty::Union(
                                     Box::new(Ty::Number),
                                     Box::new(Ty::Union(Box::new(Ty::String), Box::new(Ty::Path))),
-                                ))
+                                )
                             }
 
                             (var @ Ty::Var(_), Ty::Number) | (Ty::Number, var @ Ty::Var(_)) => {
                                 self.constrain(var, &Ty::Number)
                                     .map_err(|e| e.span(lhs.get_span()))?;
-                                Ok(Ty::Number)
+                                Ty::Number
                             }
                             (var @ Ty::Var(_), Ty::String) | (Ty::String, var @ Ty::Var(_)) => {
                                 self.constrain(var, &Ty::String)
                                     .map_err(|e| e.span(lhs.get_span()))?;
-                                Ok(Ty::String)
+                                Ty::String
                             }
                             (var @ Ty::Var(_), Ty::Path) | (Ty::Path, var @ Ty::Var(_)) => {
                                 self.constrain(var, &Ty::Path)
                                     .map_err(|e| e.span(lhs.get_span()))?;
-                                Ok(Ty::Path)
+                                Ty::Path
                             }
-                            (Ty::Number | Ty::Path | Ty::String, ty2) => Err(SpannedError {
-                                error: InferError::TypeMismatch {
-                                    // TODO: this should be union of Number, String, Path
-                                    expected: TypeName::Number,
-                                    found: ty2.get_name(),
-                                },
-                                span: rhs.get_span().clone(),
-                            }),
-                            (ty1, _) => Err(SpannedError {
-                                error: InferError::TypeMismatch {
-                                    // TODO: this should be union of Number, String, Path
-                                    expected: TypeName::Number,
-                                    found: ty1.get_name(),
-                                },
-                                span: lhs.get_span().clone(),
-                            }),
+                            (Ty::Number | Ty::Path | Ty::String, ty2) => {
+                                self.diagnostics.push(crate::diagnostic::Diagnostic::new(
+                                    /* TODO: get range for ty1/ty2 */ Default::default(),
+                                    crate::diagnostic::DiagnosticKind::TypeMismatch,
+                                ));
+                                Ty::Number
+                            }
+                            (ty1, _) => {
+                                self.diagnostics.push(crate::diagnostic::Diagnostic::new(
+                                    /* TODO: get range for ty1 */ Default::default(),
+                                    crate::diagnostic::DiagnosticKind::TypeMismatch,
+                                ));
+                                Ty::Number
+                            }
                         }
                     }
 
@@ -584,7 +582,7 @@ impl InferCtx<'_> {
                             .map_err(|e| e.span(lhs.get_span()))?;
                         self.constrain(&ty1, &ty2)
                             .map_err(|e| e.span(rhs.get_span()))?;
-                        Ok(Ty::Union(Box::new(ty1), Box::new(ty2)))
+                        Ty::Union(Box::new(ty1), Box::new(ty2))
                     }
 
                     // Comparisons
@@ -597,16 +595,16 @@ impl InferCtx<'_> {
                         (ty @ Ty::Var(_), _) | (_, ty @ Ty::Var(_)) => {
                             self.constrain(ty, &ty2)
                                 .map_err(|e| e.span(lhs.get_span()))?;
-                            Ok(Bool)
+                            Ty::Bool
                         }
-                        (ty1, ty2) if ty1 != ty2 => Err(SpannedError {
-                            error: InferError::TypeMismatch {
-                                expected: ty1.get_name(),
-                                found: ty2.get_name(),
-                            },
-                            span: rhs.get_span().clone(),
-                        }),
-                        _ => Ok(Bool),
+                        (ty1, ty2) if ty1 != ty2 => {
+                            self.diagnostics.push(crate::diagnostic::Diagnostic::new(
+                                /* TODO: get range for ty1/ty2 */ Default::default(),
+                                crate::diagnostic::DiagnosticKind::TypeMismatch,
+                            ));
+                            Ty::Bool
+                        }
+                        _ => Ty::Bool,
                     },
 
                     // Logical oprators
@@ -615,7 +613,7 @@ impl InferCtx<'_> {
                             .map_err(|e| e.span(lhs.get_span()))?;
                         self.constrain(&ty2, &Ty::Bool)
                             .map_err(|e| e.span(rhs.get_span()))?;
-                        Ok(Bool)
+                        Ty::Bool
                     }
                     _ => panic!("unimplemented binary operator: {:?}", op),
                 }
