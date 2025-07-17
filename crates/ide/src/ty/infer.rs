@@ -124,7 +124,7 @@ pub(crate) fn infer_query(db: &dyn Database, file: FileId) -> Arc<InferenceResul
 pub(crate) fn infer_with(
     db: &dyn Database,
     file: FileId,
-    db: &dyn TyDatabase,
+    db: &dyn Database,
     file_id: FileId,
     expect_ty: Option<super::Ty>,
 ) -> Arc<InferenceResult> {
@@ -324,7 +324,7 @@ impl InferCtx<'_> {
                 return Err(InferError::CannotConstrain {
                     lhs: lhs.clone(),
                     rhs: rhs.clone(),
-                })
+                });
             }
         }
 
@@ -445,7 +445,7 @@ impl InferCtx<'_> {
                         (Ty::List(l), Ty::List(l2)) => Ty::List([l.clone(), l2.clone()].concat()),
                         (var1 @ Ty::Var(v1), var2 @ Ty::Var(v2)) => {
                             self.constrain(var1, &Ty::List(vec![]));
-                            self.constrain(self, var2, &Ty::List(vec![]))
+                            self.constrain(var2, &Ty::List(vec![]))
                                 .map_err(|e| e.span(rhs.get_span()))?;
                             Ty::List(
                                 [
@@ -457,7 +457,7 @@ impl InferCtx<'_> {
                         }
 
                         (Ty::List(l), var @ Ty::Var(_)) | (var @ Ty::Var(_), Ty::List(l)) => {
-                            constrain(self, var, &Ty::List(vec![]))
+                            self.constrain(var, &Ty::List(vec![]))
                                 .map_err(|e| e.span(rhs.get_span()))?;
                             Ty::List(l.clone())
                         }
@@ -479,9 +479,9 @@ impl InferCtx<'_> {
                         }
 
                         (Ty::Var(v1), Ty::Var(v2)) => {
-                            constrain(self, &ty1, &Ty::Record(HashMap::new()))
+                            self.constrain(&ty1, &Ty::Record(HashMap::new()))
                                 .map_err(|e| e.span(lhs.get_span()))?;
-                            constrain(self, &ty2, &Ty::Record(HashMap::new()))
+                            self.constrain(&ty2, &Ty::Record(HashMap::new()))
                                 .map_err(|e| e.span(rhs.get_span()))?;
 
                             let mut rc1 = v1.as_record().unwrap_or_default();
@@ -491,7 +491,7 @@ impl InferCtx<'_> {
 
                         (Ty::Record(rc1), var @ Ty::Var(_))
                         | (var @ Ty::Var(_), Ty::Record(rc1)) => {
-                            constrain(self, var, &Ty::Record(HashMap::new()))
+                            self.constrain(var, &Ty::Record(HashMap::new()))
                                 .map_err(|e| e.span(rhs.get_span()))?;
                             Ok(Ty::Record(rc1.clone()))
                         }
@@ -514,8 +514,10 @@ impl InferCtx<'_> {
 
                     // Primitives
                     BinaryOpKind::Mul | BinaryOpKind::Div | BinaryOpKind::Sub => {
-                        constrain(self, &ty1, &Ty::Number).map_err(|e| e.span(lhs.get_span()))?;
-                        constrain(self, &ty2, &Ty::Number).map_err(|e| e.span(rhs.get_span()))?;
+                        self.constrain(&ty1, &Ty::Number)
+                            .map_err(|e| e.span(lhs.get_span()))?;
+                        self.constrain(&ty2, &Ty::Number)
+                            .map_err(|e| e.span(rhs.get_span()))?;
                         Ok(Ty::Number)
                     }
                     BinaryOpKind::Add => {
@@ -543,17 +545,17 @@ impl InferCtx<'_> {
                             }
 
                             (var @ Ty::Var(_), Ty::Number) | (Ty::Number, var @ Ty::Var(_)) => {
-                                constrain(self, var, &Ty::Number)
+                                self.constrain(var, &Ty::Number)
                                     .map_err(|e| e.span(lhs.get_span()))?;
                                 Ok(Ty::Number)
                             }
                             (var @ Ty::Var(_), Ty::String) | (Ty::String, var @ Ty::Var(_)) => {
-                                constrain(self, var, &Ty::String)
+                                self.constrain(var, &Ty::String)
                                     .map_err(|e| e.span(lhs.get_span()))?;
                                 Ok(Ty::String)
                             }
                             (var @ Ty::Var(_), Ty::Path) | (Ty::Path, var @ Ty::Var(_)) => {
-                                constrain(self, var, &Ty::Path)
+                                self.constrain(var, &Ty::Path)
                                     .map_err(|e| e.span(lhs.get_span()))?;
                                 Ok(Ty::Path)
                             }
@@ -578,8 +580,10 @@ impl InferCtx<'_> {
 
                     // Misc
                     BinaryOpKind::AttributeFallback => {
-                        constrain(self, &ty1, &ty2).map_err(|e| e.span(lhs.get_span()))?;
-                        constrain(self, &ty1, &ty2).map_err(|e| e.span(rhs.get_span()))?;
+                        self.constrain(&ty1, &ty2)
+                            .map_err(|e| e.span(lhs.get_span()))?;
+                        self.constrain(&ty1, &ty2)
+                            .map_err(|e| e.span(rhs.get_span()))?;
                         Ok(Ty::Union(Box::new(ty1), Box::new(ty2)))
                     }
 
@@ -591,7 +595,8 @@ impl InferCtx<'_> {
                     | BinaryOpKind::Equal
                     | BinaryOpKind::NotEqual => match (&ty1, &ty2) {
                         (ty @ Ty::Var(_), _) | (_, ty @ Ty::Var(_)) => {
-                            constrain(self, ty, &ty2).map_err(|e| e.span(lhs.get_span()))?;
+                            self.constrain(ty, &ty2)
+                                .map_err(|e| e.span(lhs.get_span()))?;
                             Ok(Bool)
                         }
                         (ty1, ty2) if ty1 != ty2 => Err(SpannedError {
@@ -606,8 +611,10 @@ impl InferCtx<'_> {
 
                     // Logical oprators
                     BinaryOpKind::And | BinaryOpKind::Or | BinaryOpKind::Implication => {
-                        constrain(self, &ty1, &Ty::Bool).map_err(|e| e.span(lhs.get_span()))?;
-                        constrain(self, &ty2, &Ty::Bool).map_err(|e| e.span(rhs.get_span()))?;
+                        self.constrain(&ty1, &Ty::Bool)
+                            .map_err(|e| e.span(lhs.get_span()))?;
+                        self.constrain(&ty2, &Ty::Bool)
+                            .map_err(|e| e.span(rhs.get_span()))?;
                         Ok(Bool)
                     }
                     _ => panic!("unimplemented binary operator: {:?}", op),
@@ -632,7 +639,7 @@ impl InferCtx<'_> {
                         })
                         .collect();
 
-                    let mut inherits = load_inherit(self, span.clone(), lvl, inherit)?;
+                    let mut inherits = self.load_inherit(lvl, inherit)?;
                     inherits.extend(vars.clone());
 
                     self.with_scope(inherits, |ctx| {
@@ -652,7 +659,7 @@ impl InferCtx<'_> {
                                     )],
                                     |ctx| type_term(ctx, rhs, lvl + 1),
                                 )?;
-                                constrain(ctx, &ty, &Ty::Var(e_ty.clone()))
+                                ctx.constrain(&ty, &Ty::Var(e_ty.clone()))
                                     .map_err(|e| e.span(rhs.get_span()))?;
                                 Ok((name, Ty::Var(e_ty)))
                             })
@@ -677,7 +684,7 @@ impl InferCtx<'_> {
                             (ident.name.to_string(), type_term(self, expr, lvl).unwrap())
                         })
                         .collect();
-                    let ok = load_inherit(self, span.clone(), lvl, inherit);
+                    let ok = self.load_inherit(lvl, inherit);
                     vars.extend(
                         ok?.into_iter()
                             .map(|(name, ty)| (name.to_string(), ty.instantiate(self, lvl))),
@@ -702,7 +709,7 @@ impl InferCtx<'_> {
                     })
                     .collect();
 
-                let mut inherits = load_inherit(self, span.clone(), lvl, inherit)?;
+                let mut inherits = self.load_inherit(lvl, inherit)?;
                 inherits.extend(binds.clone());
                 let (ok, err): (Vec<_>, Vec<_>) = self
                     .with_scope(inherits, |ctx| {
@@ -724,7 +731,7 @@ impl InferCtx<'_> {
                                 )?;
                                 let bind = bindings.iter().find(|(n, _)| n.name == *name).unwrap();
                                 bind.0.var.set(coalesc_type(ctx, &ty)).unwrap();
-                                constrain(ctx, &ty, &Ty::Var(e_ty.clone()))
+                                ctx.constrain(&ty, &Ty::Var(e_ty.clone()))
                                     .map_err(|e| e.span(rhs.get_span()))?;
                                 Ok((
                                     name,
@@ -777,7 +784,7 @@ impl InferCtx<'_> {
                                 PatternElement::DefaultIdentifier(name, expr) => {
                                     let ty = type_term(self, expr, lvl)?;
                                     let var = Ty::Var(self.fresh_var(lvl));
-                                    constrain(self, &var, &ty).map_err(|e| e.span(span))?;
+                                    self.constrain(&var, &ty).map_err(|e| e.span(span))?;
 
                                     item.push((name.name.clone(), (var.clone(), Some(ty))));
                                     added.push((name.name.to_string(), ContextType::Type(var)));
@@ -789,8 +796,7 @@ impl InferCtx<'_> {
                         if let Some(name) = name {
                             let var = self.fresh_var(lvl);
                             if *is_wildcard {
-                                constrain(
-                                    self,
+                                self.constrain(
                                     &Ty::Var(var.clone()),
                                     &Ty::Record(
                                         item.into_iter()
@@ -800,7 +806,7 @@ impl InferCtx<'_> {
                                 )
                                 .map_err(|e| e.span(span))?;
                             } else {
-                                constrain(self, &Ty::Var(var.clone()), &ty)
+                                self.constrain(&Ty::Var(var.clone()), &ty)
                                     .map_err(|e| e.span(span))?;
                             }
                             added.push((name.to_string(), ContextType::Type(Ty::Var(var))));
@@ -852,7 +858,7 @@ impl InferCtx<'_> {
                 let ty = type_term(self, condition, lvl)?;
                 match ty {
                     Ty::Var(_) => {
-                        constrain(self, &ty, &Ty::Bool)
+                        self.constrain(&ty, &Ty::Bool)
                             .map_err(|e| e.span(condition.get_span()))?;
                     }
                     Ty::Bool => (),
@@ -863,7 +869,7 @@ impl InferCtx<'_> {
                                 found: ty.get_name(),
                             },
                             span: span.clone(),
-                        })
+                        });
                     }
                 }
                 let ty1 = type_term(self, expr1, lvl)?;
@@ -883,7 +889,7 @@ impl InferCtx<'_> {
                 match ty {
                     Ty::Bool => (),
                     Ty::Var(_) => {
-                        constrain(self, &ty, &Ty::Bool)
+                        self.constrain(&ty, &Ty::Bool)
                             .map_err(|e| e.span(condition.get_span()))?;
                     }
                     _ => {
@@ -947,7 +953,8 @@ impl InferCtx<'_> {
                                 .collect_vec();
                             let record = Ty::Record(vars.clone().into_iter().collect());
 
-                            constrain(ctx, ty, &record).map_err(|e| e.span(expr.get_span()))?;
+                            ctx.constrain(ty, &record)
+                                .map_err(|e| e.span(expr.get_span()))?;
 
                             Ok(vars
                                 .into_iter()
