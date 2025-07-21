@@ -15,3 +15,15 @@ pub trait TyDatabase: DefDatabase {
     fn flake_input_tys(&self, sid: SourceRootId) -> Arc<HashMap<String, Ty>>;
 }
 ```
+
+```rust
+#[salsa::database]
+#[derive(Default, Clone)]
+pub struct DefDatabase {
+    storage: salsa::Storage<Self>,
+}
+
+#[salsa::database]
+impl salsa::Database for DefDatabase {}
+
+```

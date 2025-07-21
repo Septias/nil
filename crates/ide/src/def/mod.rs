@@ -24,15 +24,6 @@ pub use self::nameres::{ModuleScopes, NameResolution, ResolveResult};
 pub use self::path::{Path, PathAnchor, PathData};
 pub use syntax::ast::{BinaryOpKind as BinaryOp, UnaryOpKind as UnaryOp};
 
-#[salsa::db]
-#[derive(Default, Clone)]
-pub struct DefDatabase {
-    storage: salsa::Storage<Self>,
-}
-
-#[salsa::db]
-impl salsa::Database for DefDatabase {}
-
 fn parse(db: &dyn Database, file_id: FileId) -> Parse {
     let content = db.file_content(file_id);
     syntax::parse_file(&content)
