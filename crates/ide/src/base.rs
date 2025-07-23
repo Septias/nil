@@ -1,13 +1,11 @@
 use nix_interop::flake_output::FlakeOutput;
 use nix_interop::nixos_options::NixosOptions;
-use salsa::Durability;
+use salsa::{Database, Durability};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use syntax::{TextRange, TextSize};
-
-use crate::DefDatabase;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FileId(pub u32);
@@ -279,7 +277,7 @@ impl Change {
         self.file_changes.push((file_id, content));
     }
 
-    pub(crate) fn apply(self, db: &mut DefDatabase) {
+    pub(crate) fn apply(self, db: &dyn Database) {
         if let Some(flake_graph) = self.flake_graph {
             db.set_flake_graph_with_durability(Arc::new(flake_graph), Durability::MEDIUM);
         }

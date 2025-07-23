@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use if_chain::if_chain;
+use salsa::Database;
 use smol_str::SmolStr;
 
 use crate::{DefDatabase, FileId, Module};
@@ -159,7 +160,7 @@ fn peel_expr(module: &Module, expr: ExprId) -> ExprId {
 
 #[cfg(test)]
 mod tests {
-    use expect_test::{Expect, expect};
+    use expect_test::{expect, Expect};
     use itertools::Itertools;
 
     use super::*;

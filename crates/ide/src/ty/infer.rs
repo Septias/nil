@@ -1,5 +1,5 @@
 use super::union_find::UnionFind;
-use super::{AttrSource, known};
+use super::{known, AttrSource};
 use crate::def::{
     BindingValue, Bindings, Expr, ExprId, Literal, NameId, NameResolution, ResolveResult,
 };
@@ -51,7 +51,6 @@ impl Ty {
     }
 }
 
-/// A nix attrset.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct Attrset {
     /// Map from names to types.
@@ -61,7 +60,6 @@ struct Attrset {
     dyn_ty: Option<TyVar>,
 }
 
-/// Result from inference.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InferenceResult {
     name_ty_map: ArenaMap<NameId, super::Ty>,
@@ -78,17 +76,16 @@ impl InferenceResult {
     }
 }
 
-/// Infer a type for a DB-file.
 pub(crate) fn infer_query(db: &dyn Database, file: FileId) -> Arc<InferenceResult> {
-    let expect_ty = db.module_expected_ty(file);
     infer_with(db, file, expect_ty)
 }
 
-/// Type inference with expected type.
 pub(crate) fn infer_with(
     db: &dyn Database,
     file: FileId,
     expect_ty: Option<super::Ty>,
+    module: Module,
+    nameres: NameResolution,
 ) -> Arc<InferenceResult> {
     let module = db.module(file);
     let nameres = db.name_resolution(file);
@@ -108,11 +105,6 @@ pub(crate) fn infer_with(
 struct InferCtx<'db> {
     module: &'db Module,
     nameres: &'db NameResolution,
-
-    /// The arena for both unification and interning.
-    /// First `module.names().len() + module.exprs().len()` elements are types of each names and
-    /// exprs, to allow recursive definition.
-    table: UnionFind<Ty>,
 }
 
 impl InferCtx<'_> {
