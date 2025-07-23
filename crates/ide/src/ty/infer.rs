@@ -8,7 +8,6 @@ use la_arena::ArenaMap;
 use salsa::Database;
 use smol_str::SmolStr;
 use std::collections::btree_map::{BTreeMap, Entry};
-use std::mem;
 use std::sync::Arc;
 use syntax::ast::{BinaryOpKind, UnaryOpKind};
 
@@ -28,9 +27,6 @@ struct TyVar(u32);
 enum Ty {
     Unknown,
 
-    // We won't wanna infer to `null` before supporting union types.
-    // It would contain no information.
-    // Null,
     Bool,
     Int,
     Float,
@@ -39,7 +35,6 @@ enum Ty {
 
     List(TyVar),
     Lambda(TyVar, TyVar),
-    // TODO: Add support for `rest` similar to super::Attrset.
     Attrset(Attrset),
 
     External(super::Ty),
@@ -55,8 +50,6 @@ impl Ty {
 struct Attrset {
     /// Map from names to types.
     fields: BTreeMap<SmolStr, (TyVar, AttrSource)>,
-    // This is the type for all non-static fields.
-    // Is this really the same as `super::Attrset::rest`?
     dyn_ty: Option<TyVar>,
 }
 
@@ -188,24 +181,6 @@ impl InferCtx<'_> {
     }
 
     fn finish(mut self) -> InferenceResult {
-        let mut i = Collector::new(&mut self.table);
-
-        let name_cnt = self.module.names().len();
-        let expr_cnt = self.module.exprs().len();
-        let mut name_ty_map = ArenaMap::with_capacity(name_cnt);
-        let mut expr_ty_map = ArenaMap::with_capacity(expr_cnt);
-        for (name, _) in self.module.names() {
-            let ty = TyVar(u32::from(name.into_raw()));
-            name_ty_map.insert(name, i.collect(ty));
-        }
-        for (expr, _) in self.module.exprs() {
-            let ty = TyVar(name_cnt as u32 + u32::from(expr.into_raw()));
-            expr_ty_map.insert(expr, i.collect(ty));
-        }
-
-        InferenceResult {
-            name_ty_map,
-            expr_ty_map,
-        }
+        unimplemented!()
     }
 }
