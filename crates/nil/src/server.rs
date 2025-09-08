@@ -1109,9 +1109,9 @@ fn error_to_response(err: anyhow::Error) -> ResponseError {
 
 #[derive(Debug)]
 pub struct StateSnapshot {
+    pub(crate) config: Arc<Config>,
     pub(crate) analysis: Analysis,
     vfs: Arc<RwLock<Vfs>>,
-    pub(crate) config: Arc<Config>,
 }
 
 impl StateSnapshot {
