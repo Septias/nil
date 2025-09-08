@@ -14,8 +14,10 @@ mod symbol_hierarchy;
 mod syntax_highlighting;
 
 use crate::{
-    Change, Diagnostic, FileId, FilePos, FileRange, FileSet, SourceRoot, VfsPath, WorkspaceEdit,
+    Change, Diagnostic, FileId, FilePos, FileRange, FileSet, FlakeGraph, FlakeInfo, SourceRoot,
+    SourceRootId, VfsPath, WorkspaceEdit,
 };
+use nix_interop::nixos_options::NixosOptions;
 use nix_interop::DEFAULT_IMPORT_FILE;
 use salsa::{Database, Durability};
 use smol_str::SmolStr;
@@ -119,7 +121,7 @@ impl AnalysisHost {
 
 #[derive(Debug)]
 pub struct Analysis {
-    db: salsa::Snapshot<RootDatabase>,
+    db: RootDatabase,
 }
 
 impl Analysis {

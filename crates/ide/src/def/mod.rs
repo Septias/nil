@@ -25,9 +25,8 @@ pub use self::nameres::{ModuleScopes, NameReference, NameResolution, ResolveResu
 pub use self::path::{Path, PathAnchor, PathData};
 pub use syntax::ast::{BinaryOpKind as BinaryOp, UnaryOpKind as UnaryOp};
 
-#[salsa::query_group(DefDatabaseStorage)]
+#[salsa::db]
 pub trait DefDatabase: SourceDatabase {
-    #[salsa::interned]
     fn intern_path(&self, path_data: PathData) -> Path;
 
     fn parse(&self, file_id: FileId) -> Parse;
@@ -38,10 +37,8 @@ pub trait DefDatabase: SourceDatabase {
 
     fn source_map(&self, file_id: FileId) -> Arc<ModuleSourceMap>;
 
-    #[salsa::invoke(ModuleKind::module_kind_query)]
     fn module_kind(&self, file_id: FileId) -> Arc<ModuleKind>;
 
-    #[salsa::invoke(Module::module_references_query)]
     fn module_references(&self, file_id: FileId) -> Arc<HashSet<FileId>>;
 
     fn source_root_referrer_graph(
@@ -55,19 +52,14 @@ pub trait DefDatabase: SourceDatabase {
     // And also this method is not call so often.
     fn module_referrers(&self, file_id: FileId) -> ModuleReferrers;
 
-    #[salsa::invoke(Path::resolve_path_query)]
     fn resolve_path(&self, path: Path) -> Option<VfsPath>;
 
-    #[salsa::invoke(ModuleScopes::module_scopes_query)]
     fn scopes(&self, file_id: FileId) -> Arc<ModuleScopes>;
 
-    #[salsa::invoke(NameResolution::name_resolution_query)]
     fn name_resolution(&self, file_id: FileId) -> Arc<NameResolution>;
 
-    #[salsa::invoke(NameReference::name_reference_query)]
     fn name_reference(&self, file_id: FileId) -> Arc<NameReference>;
 
-    #[salsa::invoke(liveness::liveness_check_query)]
     fn liveness_check(&self, file_id: FileId) -> Arc<LivenessCheckResult>;
 }
 

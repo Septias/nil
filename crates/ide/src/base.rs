@@ -238,23 +238,18 @@ impl FileRange {
     }
 }
 
-#[salsa::query_group(SourceDatabaseStorage)]
+#[salsa::db]
 pub trait SourceDatabase {
-    #[salsa::input]
     fn file_content(&self, file_id: FileId) -> Arc<str>;
 
-    #[salsa::input]
     fn source_root(&self, sid: SourceRootId) -> Arc<SourceRoot>;
 
     fn source_root_flake_info(&self, sid: SourceRootId) -> Option<Arc<FlakeInfo>>;
 
-    #[salsa::input]
     fn file_source_root(&self, file_id: FileId) -> SourceRootId;
 
-    #[salsa::input]
     fn flake_graph(&self) -> Arc<FlakeGraph>;
 
-    #[salsa::input]
     fn nixos_options(&self) -> Arc<NixosOptions>;
 }
 
