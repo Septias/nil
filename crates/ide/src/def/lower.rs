@@ -1,3 +1,4 @@
+/// Lower the parser ast into Expr which is used by type inference.
 use super::{
     AstPtr, Attrpath, BindingValue, Bindings, DefDatabase, Expr, ExprId, Literal, Module,
     ModuleSourceMap, Name, NameId, NameKind, Pat, PathAnchor, PathData,

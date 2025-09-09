@@ -29,8 +29,6 @@ pub use syntax::ast::{BinaryOpKind as BinaryOp, UnaryOpKind as UnaryOp};
 pub trait DefDatabase: SourceDatabase {
     fn intern_path(&self, path_data: PathData) -> Path;
 
-    fn parse(&self, file_id: FileId) -> Parse;
-
     fn module_with_source_map(&self, file_id: FileId) -> (Arc<Module>, Arc<ModuleSourceMap>);
 
     fn module(&self, file_id: FileId) -> Arc<Module>;
@@ -63,7 +61,7 @@ pub trait DefDatabase: SourceDatabase {
     fn liveness_check(&self, file_id: FileId) -> Arc<LivenessCheckResult>;
 }
 
-fn parse(db: &dyn DefDatabase, file_id: FileId) -> Parse {
+pub fn parse(db: &dyn DefDatabase, file_id: FileId) -> Parse {
     let content = db.file_content(file_id);
     syntax::parse_file(&content)
 }

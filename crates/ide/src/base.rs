@@ -1,11 +1,12 @@
 use nix_interop::flake_output::FlakeOutput;
-use nix_interop::nixos_options::NixosOptions;
-use salsa::Durability;
+use nix_interop::nixos_options::{NixosOption, NixosOptions};
+use salsa::{Durability, Setter};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use syntax::{TextRange, TextSize};
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FileId(pub u32);
@@ -168,7 +169,7 @@ impl SourceRoot {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[salsa::input(debug)]
 pub struct FlakeGraph {
     pub nodes: HashMap<SourceRootId, FlakeInfo>,
 }
@@ -237,24 +238,33 @@ impl FileRange {
         Self::new(pos.file_id, TextRange::empty(pos.pos))
     }
 }
+#[salsa::input]
+struct NixosOptions_{
+    options: HashMap<String, NixosOption>
+}
+
+#[salsa::input]
+struct SourceRootId_ {
+    id: SourceRootId
+}
 
 #[salsa::db]
-pub trait SourceDatabase {
+pub trait SourceDatabase: salsa::Database {
     fn file_content(&self, file_id: FileId) -> Arc<str>;
 
     fn source_root(&self, sid: SourceRootId) -> Arc<SourceRoot>;
 
     fn source_root_flake_info(&self, sid: SourceRootId) -> Option<Arc<FlakeInfo>>;
 
-    fn file_source_root(&self, file_id: FileId) -> SourceRootId;
+    fn file_source_root(&self, file_id: FileId) -> SourceRootId_;
 
     fn flake_graph(&self) -> Arc<FlakeGraph>;
 
-    fn nixos_options(&self) -> Arc<NixosOptions>;
+    fn nixos_options(&self) -> Arc<NixosOptions_>;
 }
 
 fn source_root_flake_info(db: &dyn SourceDatabase, sid: SourceRootId) -> Option<Arc<FlakeInfo>> {
-    db.flake_graph().nodes.get(&sid).cloned().map(Arc::new)
+    db.flake_graph().nodes(db).get(&sid).cloned().map(Arc::new)
 }
 
 #[derive(Default, Clone, PartialEq, Eq)]
@@ -288,16 +298,19 @@ impl Change {
 
     pub(crate) fn apply(self, db: &mut dyn SourceDatabase) {
         if let Some(flake_graph) = self.flake_graph {
-            db.set_flake_graph_with_durability(Arc::new(flake_graph), Durability::MEDIUM);
+            db.flake_graph()
+                .set_nodes(db)
+                .with_durability(Durability::MEDIUM)
+                .to(flake_graph.nodes(db));
         }
         if let Some(opts) = self.nixos_options {
-            db.set_nixos_options_with_durability(Arc::new(opts), Durability::MEDIUM);
+            db.nixos_options().set_options(db).with_durability(Durability::MEDIUM).to(opts);
         }
         if let Some(roots) = self.roots {
             u32::try_from(roots.len()).expect("Length overflow");
             for (sid, root) in (0u32..).map(SourceRootId).zip(roots) {
                 for (fid, _) in root.files() {
-                    db.set_file_source_root_with_durability(fid, sid, Durability::HIGH);
+                    db.file_source_root(fid).(sid);
                 }
                 db.set_source_root_with_durability(sid, Arc::new(root), Durability::HIGH);
             }
