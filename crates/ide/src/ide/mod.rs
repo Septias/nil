@@ -81,6 +81,36 @@ impl Default for RootDatabase {
     }
 }
 
+
+impl RootDatabase {
+    pub fn apply_change(&mut self, change: Change) {
+
+        if let Some(flake_graph) = change.flake_graph {
+            self.flake_graph()
+                .set_nodes(db)
+                .with_durability(Durability::MEDIUM)
+                .to(flake_graph.nodes(db));
+        }
+        if let Some(opts) = self.nixos_options {
+            db.nixos_options().set_options(db).with_durability(Durability::MEDIUM).to(opts);
+        }
+        if let Some(roots) = self.roots {
+            u32::try_from(roots.len()).expect("Length overflow");
+            for (sid, root) in (0u32..).map(SourceRootId).zip(roots) {
+                for (fid, _) in root.files() {
+                    db.file_source_root(fid).(sid);
+                }
+                db.set_source_root_with_durability(sid, Arc::new(root), Durability::HIGH);
+            }
+        }
+        for (file_id, content) in self.file_changes {
+            db.set_file_content_with_durability(file_id, content, Durability::LOW);
+        }
+
+    }
+
+}
+
 #[derive(Default, Debug)]
 pub struct AnalysisHost {
     db: RootDatabase,
@@ -103,19 +133,20 @@ impl AnalysisHost {
         (this, file)
     }
 
-    pub fn snapshot(&self) -> Analysis {
+    /// Returns a snapshot of the current state, which you can query for
+    /// semantic information.
+    pub fn analysis(&self) -> Analysis {
         Analysis {
-            db: self.db.snapshot(),
+            db: self.db.clone(),
         }
     }
 
     pub fn request_cancellation(&mut self) {
-        self.db.salsa_runtime_mut().synthetic_write(Durability::LOW);
+        self.db.request_cancellation();
     }
 
     pub fn apply_change(&mut self, change: Change) {
-        self.request_cancellation();
-        change.apply(&mut self.db);
+        self.db.apply_change(change)
     }
 }
 
