@@ -1,3 +1,4 @@
+use crate::def::parse2;
 use crate::{DefDatabase, FileId};
 use itertools::Itertools;
 use std::fmt::Display;
@@ -43,7 +44,7 @@ pub(crate) fn inlay_hints(
         return vec![];
     };
 
-    let root_node = db.parse(file).syntax_node();
+    let root_node = parse2(db, file).syntax_node();
     let (first_tok, end_pos) = match range {
         None => (root_node.first_token(), u32::MAX.into()),
         Some(range) => (

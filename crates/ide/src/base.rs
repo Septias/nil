@@ -140,7 +140,7 @@ impl fmt::Debug for FileSet {
     }
 }
 
-/// A workspace unit, typically a Flake package.
+/// A workspace unit, typically a flake package.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceRoot {
     file_set: FileSet,
@@ -238,6 +238,7 @@ impl FileRange {
         Self::new(pos.file_id, TextRange::empty(pos.pos))
     }
 }
+
 #[salsa::input]
 struct NixosOptions_{
     options: HashMap<String, NixosOption>
@@ -269,9 +270,9 @@ fn source_root_flake_info(db: &dyn SourceDatabase, sid: SourceRootId) -> Option<
 
 #[derive(Default, Clone, PartialEq, Eq)]
 pub struct Change {
-    pub flake_graph: Option<FlakeGraph>,
     pub roots: Option<Vec<SourceRoot>>,
     pub file_changes: Vec<(FileId, Arc<str>)>,
+    pub flake_graph: Option<FlakeGraph>,
     pub nixos_options: Option<NixosOptions>,
 }
 

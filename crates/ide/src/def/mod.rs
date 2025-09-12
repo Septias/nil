@@ -61,6 +61,19 @@ pub trait DefDatabase: SourceDatabase {
     fn liveness_check(&self, file_id: FileId) -> Arc<LivenessCheckResult>;
 }
 
+#[salsa::input]
+struct File {
+    path: VfsPath,
+    #[returns(ref)]
+    contents: String,
+}
+
+#[salsa::tracked]
+pub fn parse2(db: &dyn DefDatabase, file: File) -> Parse {
+    let content = file.contents(db);
+    syntax::parse_file(&content)
+}
+
 pub fn parse(db: &dyn DefDatabase, file_id: FileId) -> Parse {
     let content = db.file_content(file_id);
     syntax::parse_file(&content)
