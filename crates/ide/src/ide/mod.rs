@@ -52,7 +52,7 @@ pub type Cancellable<T> = Result<T, Cancelled>;
 /// Root database of ide.
 #[salsa::db]
 #[derive(Clone)]
-struct RootDatabase {
+pub(crate) struct RootDatabase {
     storage: salsa::Storage<Self>,
 }
 

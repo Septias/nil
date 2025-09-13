@@ -78,6 +78,7 @@ mod union_find;
 mod tests;
 
 use crate::def::NameId;
+use crate::ide::RootDatabase;
 use crate::{DefDatabase, FileId, ModuleKind, SourceRootId};
 use std::collections::HashMap;
 use std::fmt;
@@ -96,6 +97,25 @@ pub trait TyDatabase: DefDatabase {
     fn nixos_config_ty(&self) -> Ty;
 
     fn flake_input_tys(&self, sid: SourceRootId) -> Arc<HashMap<String, Ty>>;
+}
+
+#[salsa::db]
+impl TyDatabase for RootDatabase {
+    fn module_expected_ty(&self, file: FileId) -> Option<Ty> {
+        todo!()
+    }
+
+    fn infer(&self, file: FileId) -> Arc<InferenceResult> {
+        todo!()
+    }
+
+    fn nixos_config_ty(&self) -> Ty {
+        todo!()
+    }
+
+    fn flake_input_tys(&self, sid: SourceRootId) -> Arc<HashMap<String, Ty>> {
+        todo!()
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]

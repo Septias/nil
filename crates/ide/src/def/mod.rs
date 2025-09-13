@@ -8,7 +8,8 @@ mod path;
 mod tests;
 
 use crate::base::SourceDatabase;
-use crate::{Diagnostic, FileId, SourceRootId, VfsPath};
+use crate::ide::RootDatabase;
+use crate::{Diagnostic, FileId, SourceRoot, SourceRootId, VfsPath};
 use la_arena::{Arena, ArenaMap, Idx};
 use nix_interop::DEFAULT_IMPORT_FILE;
 use ordered_float::OrderedFloat;
@@ -59,6 +60,68 @@ pub trait DefDatabase: SourceDatabase {
     fn name_reference(&self, file_id: FileId) -> Arc<NameReference>;
 
     fn liveness_check(&self, file_id: FileId) -> Arc<LivenessCheckResult>;
+}
+
+#[salsa::db]
+impl DefDatabase for RootDatabase {
+    fn intern_path(&self, path_data: PathData) -> Path {
+        todo!()
+    }
+
+    fn module_with_source_map(&self, file_id: FileId) -> (Arc<Module>, Arc<ModuleSourceMap>) {
+        todo!()
+    }
+
+    fn module(&self, file_id: FileId) -> Arc<Module> {
+        todo!()
+    }
+
+    fn source_map(&self, file_id: FileId) -> Arc<ModuleSourceMap> {
+        todo!()
+    }
+
+    fn module_kind(&self, file_id: FileId) -> Arc<ModuleKind> {
+        todo!()
+    }
+
+    fn module_references(&self, file_id: FileId) -> Arc<HashSet<FileId>> {
+        todo!()
+    }
+
+    fn source_root_referrer_graph(
+        &self,
+        sid: SourceRootId,
+    ) -> Arc<HashMap<FileId, ModuleReferrers>> {
+        todo!()
+    }
+
+    fn source_root_closure(&self, id: SourceRootId) -> Arc<HashSet<FileId>> {
+        todo!()
+    }
+
+    fn module_referrers(&self, file_id: FileId) -> ModuleReferrers {
+        todo!()
+    }
+
+    fn resolve_path(&self, path: Path) -> Option<VfsPath> {
+        todo!()
+    }
+
+    fn scopes(&self, file_id: FileId) -> Arc<ModuleScopes> {
+        todo!()
+    }
+
+    fn name_resolution(&self, file_id: FileId) -> Arc<NameResolution> {
+        todo!()
+    }
+
+    fn name_reference(&self, file_id: FileId) -> Arc<NameReference> {
+        todo!()
+    }
+
+    fn liveness_check(&self, file_id: FileId) -> Arc<LivenessCheckResult> {
+        todo!()
+    }
 }
 
 #[salsa::input]

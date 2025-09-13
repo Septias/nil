@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use syntax::{TextRange, TextSize};
 
+use crate::ide::RootDatabase;
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FileId(pub u32);
@@ -262,6 +264,34 @@ pub trait SourceDatabase: salsa::Database {
     fn flake_graph(&self) -> Arc<FlakeGraph>;
 
     fn nixos_options(&self) -> Arc<NixosOptions_>;
+}
+
+#[salsa::db]
+impl SourceDatabase for RootDatabase {
+    fn file_content(&self,file_id:FileId) -> Arc<str>  {
+        todo!()
+    }
+
+    fn source_root(&self,sid:SourceRootId) -> Arc<SourceRoot>  {
+        todo!()
+    }
+
+    fn source_root_flake_info(&self,sid:SourceRootId) -> Option<Arc<FlakeInfo> >  {
+        todo!()
+    }
+
+    fn file_source_root(&self,file_id:FileId) -> SourceRootId_ {
+        todo!()
+    }
+
+    fn flake_graph(&self) -> Arc<FlakeGraph>  {
+        todo!()
+    }
+
+    fn nixos_options(&self) -> Arc<NixosOptions_>  {
+        todo!()
+    }
+
 }
 
 fn source_root_flake_info(db: &dyn SourceDatabase, sid: SourceRootId) -> Option<Arc<FlakeInfo>> {
