@@ -92,8 +92,6 @@ use smol_str::SmolStr;
 pub trait TyDatabase: DefDatabase {
     fn module_expected_ty(&self, file: FileId) -> Option<Ty>;
 
-    fn infer(&self, file: FileId) -> Arc<InferenceResult>;
-
     fn nixos_config_ty(&self) -> Ty;
 
     fn flake_input_tys(&self, sid: SourceRootId) -> Arc<HashMap<String, Ty>>;
@@ -102,10 +100,6 @@ pub trait TyDatabase: DefDatabase {
 #[salsa::db]
 impl TyDatabase for RootDatabase {
     fn module_expected_ty(&self, file: FileId) -> Option<Ty> {
-        todo!()
-    }
-
-    fn infer(&self, file: FileId) -> Arc<InferenceResult> {
         todo!()
     }
 

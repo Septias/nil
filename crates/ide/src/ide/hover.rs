@@ -24,7 +24,7 @@ pub struct HoverResult {
 }
 
 pub(crate) fn hover(db: &dyn TyDatabase, FilePos { file_id, pos }: FilePos) -> Option<HoverResult> {
-    let parse = db.parse(file_id);
+    let parse = parse(file_id);
     let tok = best_token_at_offset(&parse.syntax_node(), pos)?;
     let mut name_node = None;
     let ptr = tok.parent_ancestors().find_map(|node| {
