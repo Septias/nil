@@ -275,13 +275,6 @@ pub trait SourceDatabase: salsa::Database {
 #[allow(unused)]
 #[salsa::db]
 impl SourceDatabase for RootDatabase {
-    fn file_content(&self, file_id: File) -> Arc<str> {
-        todo!()
-    }
-    fn set_file_content(&self, file_id: File, content: &str) {
-
-        //  Durability::LOW
-    }
     fn source_root(&self, sid: SourceRootId) -> Arc<SourceRoot> {
         todo!()
     }
