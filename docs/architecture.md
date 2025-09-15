@@ -35,8 +35,14 @@
 - `Analyses`    : A single analysis which might be a snapshot for a request. Immutable, changes are requested with a `Change`
 - `Change`      : A change to analysis. This one is applied to the `salsa` database.
 
-| Input    | Durability |
-|----------|--------|
-| File          | Low       |
-| FlakeGraph | High |
-| NixosOptions | High |
+| Input    | Durability | Description |
+|----------|--------| ----------------|
+| File          | Low   | A file and their content from the editor |
+| FlakeGraph | High     | The inputs and outputs of a flake        |
+
+
+
+## DefDatabase
+- Keeps a mapping between file and FlakeInfo
+- Keeps a mapping between file and SourceRoot
+- Keeps a mapping between file and NixosOptions

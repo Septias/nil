@@ -259,9 +259,6 @@ pub trait SourceDatabase: salsa::Database {
     fn source_root(&self, sid: SourceRootId) -> Arc<SourceRoot>;
     fn set_source_root(&self, sid: SourceRootId, source_root: SourceRoot);
 
-    fn source_root_flake_info(&self, sid: SourceRootId) -> Option<Arc<FlakeInfo>>;
-    fn set_source_root_flake_info(&self, sid: SourceRootId, flake_info: FlakeInfo);
-
     fn file_source_root(&self, file_id: File) -> SourceRootId;
     fn set_file_source_root(&self, file: File, source_id: SourceRootId);
 
