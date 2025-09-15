@@ -251,7 +251,6 @@ impl LowerCtx<'_> {
                 text = &text[1..text.len() - 1]; // Strip '<' and '>'.
                 let (search_name, text) = text.split_once('/').unwrap_or((text, ""));
                 let anchor = PathAnchor::Search(search_name.into());
-                let path = self.db.intern_path(PathData::normalize(anchor, text));
                 Literal::Path(path)
             }
             LiteralKind::Path => {

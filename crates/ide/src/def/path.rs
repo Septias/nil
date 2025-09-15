@@ -3,10 +3,12 @@ use crate::{FileId, VfsPath};
 use salsa::{Database, Id};
 use smol_str::SmolStr;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Path(Id);
+#[salsa::interned]
+pub struct Path {
+    path: String,
+}
 
-impl Path {
+impl<'a> Path<'a> {
     pub(crate) fn resolve_path_query(db: &dyn DefDatabase, path: Path) -> Option<VfsPath> {
         let data = path.data(db);
         let file = match &data.anchor {

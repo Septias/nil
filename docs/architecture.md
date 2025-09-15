@@ -1,26 +1,29 @@
 
-
 # Components
 
 ## Salsa
 > Incremental Recompilation.
 
-
 ## LA Arena
 > Fast arena for bulk allocation and deletion.
-
 
 ## VFS
 > Virtual file system to handle files from `SourceRoot`s these are used to be operating system agnostic.
 - Creates line maps
-- Translates between FilePos and (col, char)
+- We can transform from FileID -> File, because... ?
 
 ## Module trees
 - This is needed such that syntax trees are relatively change agnostic and we can still retrieve the syntax nodes back
 
+## SourceRoot
+- Url -> VFS -> File -> VFS -> LineMap
+
 ## Async LSP
 > Asynchronous LSP.
 
+
+## Line Map
+- Convert between (col, char) and (index) representation
 
 
 # Structure
@@ -31,3 +34,9 @@
 - `AnalysisHost`: Host multiple `Analyses`. Clone them and create cancelable requests.
 - `Analyses`    : A single analysis which might be a snapshot for a request. Immutable, changes are requested with a `Change`
 - `Change`      : A change to analysis. This one is applied to the `salsa` database.
+
+| Input    | Durability |
+|----------|--------|
+| File          | Low       |
+| FlakeGraph | High |
+| NixosOptions | High |

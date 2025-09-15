@@ -28,8 +28,6 @@ pub use syntax::ast::{BinaryOpKind as BinaryOp, UnaryOpKind as UnaryOp};
 
 #[salsa::db]
 pub trait DefDatabase: SourceDatabase {
-    fn intern_path(&self, path_data: PathData) -> Path;
-
     fn module_with_source_map(&self, file_id: FileId) -> (Arc<Module>, Arc<ModuleSourceMap>);
 
     fn module(&self, file_id: FileId) -> Arc<Module>;
@@ -64,20 +62,20 @@ pub trait DefDatabase: SourceDatabase {
 
 #[salsa::db]
 impl DefDatabase for RootDatabase {
-    fn intern_path(&self, path_data: PathData) -> Path {
-        todo!()
-    }
-
     fn module_with_source_map(&self, file_id: FileId) -> (Arc<Module>, Arc<ModuleSourceMap>) {
-        todo!()
+        let parse = parse(self, file_id);
+        let (mut module, mut source_map) = lower::lower(self, file_id, parse);
+        module.shrink_to_fit();
+        source_map.shrink_to_fit();
+        (Arc::new(module), Arc::new(source_map))
     }
 
     fn module(&self, file_id: FileId) -> Arc<Module> {
-        todo!()
+        self.module_with_source_map(file_id).0
     }
 
     fn source_map(&self, file_id: FileId) -> Arc<ModuleSourceMap> {
-        todo!()
+        db.module_with_source_map(file_id).1
     }
 
     fn module_kind(&self, file_id: FileId) -> Arc<ModuleKind> {
@@ -132,33 +130,9 @@ struct File {
 }
 
 #[salsa::tracked]
-pub fn parse2(db: &dyn DefDatabase, file: File) -> Parse {
-    let content = file.contents(db);
-    syntax::parse_file(&content)
-}
-
 pub fn parse(db: &dyn DefDatabase, file_id: FileId) -> Parse {
     let content = db.file_content(file_id);
     syntax::parse_file(&content)
-}
-
-fn module_with_source_map(
-    db: &dyn DefDatabase,
-    file_id: FileId,
-) -> (Arc<Module>, Arc<ModuleSourceMap>) {
-    let parse = db.parse(file_id);
-    let (mut module, mut source_map) = lower::lower(db, file_id, parse);
-    module.shrink_to_fit();
-    source_map.shrink_to_fit();
-    (Arc::new(module), Arc::new(source_map))
-}
-
-fn module(db: &dyn DefDatabase, file_id: FileId) -> Arc<Module> {
-    db.module_with_source_map(file_id).0
-}
-
-fn source_map(db: &dyn DefDatabase, file_id: FileId) -> Arc<ModuleSourceMap> {
-    db.module_with_source_map(file_id).1
 }
 
 pub type ModuleReferrers = SmallVec<[FileId; 2]>;

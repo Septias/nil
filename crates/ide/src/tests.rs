@@ -1,8 +1,8 @@
 use crate::{
-    Change, FileId, FilePos, FileRange, FileSet, FlakeGraph, FlakeInfo, SourceRoot, SourceRootId,
-    VfsPath,
+    Change, DefDatabase, FileId, FilePos, FileRange, FileSet, FlakeGraph, FlakeInfo,
+    SourceDatabase, SourceRoot, SourceRootId, TyDatabase, VfsPath,
 };
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{bail, ensure, Context, Result};
 use indexmap::IndexMap;
 use nix_interop::{DEFAULT_IMPORT_FILE, FLAKE_FILE};
 use std::collections::HashMap;
@@ -21,6 +21,189 @@ pub struct TestDB {
 
 #[salsa::db]
 impl salsa::Database for TestDB {}
+
+impl SourceDatabase for TestDB {
+    fn file_content(&self, file_id: FileId) -> Arc<str> {
+        todo!()
+    }
+
+    fn set_file_content(&self, file_id: FileId, content: &str) {
+        todo!()
+    }
+
+    fn source_root(&self, sid: SourceRootId) -> Arc<SourceRoot> {
+        todo!()
+    }
+
+    fn set_source_root(&self, sid: SourceRootId, source_root: SourceRoot) {
+        todo!()
+    }
+
+    fn source_root_flake_info(&self, sid: SourceRootId) -> Option<Arc<FlakeInfo>> {
+        todo!()
+    }
+
+    fn set_source_root_flake_info(&self, sid: SourceRootId, flake_info: FlakeInfo) {
+        todo!()
+    }
+
+    fn file_source_root(&self, file_id: FileId) -> SourceRootId {
+        todo!()
+    }
+
+    fn set_file_source_root(&self, file: FileId, source_id: SourceRootId) {
+        todo!()
+    }
+
+    fn flake_graph(&self) -> Arc<FlakeGraph> {
+        todo!()
+    }
+
+    fn set_flake_graph(&self, flake_grap: FlakeGraph) {
+        todo!()
+    }
+
+    fn nixos_options(&self) -> Arc<NixosOptions> {
+        todo!()
+    }
+
+    fn set_nixos_options(&self, nixos_options: NixosOptions) {
+        todo!()
+    }
+
+    #[doc(hidden)]
+    fn zalsa_register_downcaster(&self) {
+        todo!()
+    }
+
+    #[doc = " Downcast a [`dyn Database`] to a [`dyn SourceDatabase`]"]
+    #[doc = r""]
+    #[doc = r" # Safety"]
+    #[doc = r""]
+    #[doc = r" The input database must be of type `Self`."]
+    #[doc(hidden)]
+    unsafe fn downcast(db: &dyn salsa::plumbing::Database) -> &dyn SourceDatabase
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+}
+
+impl DefDatabase for TestDB {
+    fn intern_path(&self, path_data: PathData) -> Path {
+        todo!()
+    }
+
+    fn module_with_source_map(&self, file_id: FileId) -> (Arc<Module>, Arc<ModuleSourceMap>) {
+        todo!()
+    }
+
+    fn module(&self, file_id: FileId) -> Arc<Module> {
+        todo!()
+    }
+
+    fn source_map(&self, file_id: FileId) -> Arc<ModuleSourceMap> {
+        todo!()
+    }
+
+    fn module_kind(&self, file_id: FileId) -> Arc<ModuleKind> {
+        todo!()
+    }
+
+    fn module_references(&self, file_id: FileId) -> Arc<HashSet<FileId>> {
+        todo!()
+    }
+
+    fn source_root_referrer_graph(
+        &self,
+        sid: SourceRootId,
+    ) -> Arc<HashMap<FileId, ModuleReferrers>> {
+        todo!()
+    }
+
+    fn source_root_closure(&self, id: SourceRootId) -> Arc<HashSet<FileId>> {
+        todo!()
+    }
+
+    fn module_referrers(&self, file_id: FileId) -> ModuleReferrers {
+        todo!()
+    }
+
+    fn resolve_path(&self, path: Path) -> Option<VfsPath> {
+        todo!()
+    }
+
+    fn scopes(&self, file_id: FileId) -> Arc<ModuleScopes> {
+        todo!()
+    }
+
+    fn name_resolution(&self, file_id: FileId) -> Arc<NameResolution> {
+        todo!()
+    }
+
+    fn name_reference(&self, file_id: FileId) -> Arc<NameReference> {
+        todo!()
+    }
+
+    fn liveness_check(&self, file_id: FileId) -> Arc<LivenessCheckResult> {
+        todo!()
+    }
+
+    #[doc(hidden)]
+    fn zalsa_register_downcaster(&self) {
+        todo!()
+    }
+
+    #[doc = " Downcast a [`dyn Database`] to a [`dyn DefDatabase`]"]
+    #[doc = r""]
+    #[doc = r" # Safety"]
+    #[doc = r""]
+    #[doc = r" The input database must be of type `Self`."]
+    #[doc(hidden)]
+    unsafe fn downcast(db: &dyn salsa::plumbing::Database) -> &dyn DefDatabase
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+}
+
+impl TyDatabase for TestDB {
+    fn module_expected_ty(&self, file: FileId) -> Option<Ty> {
+        todo!()
+    }
+
+    fn infer(&self, file: FileId) -> Arc<InferenceResult> {
+        todo!()
+    }
+
+    fn nixos_config_ty(&self) -> Ty {
+        todo!()
+    }
+
+    fn flake_input_tys(&self, sid: SourceRootId) -> Arc<HashMap<String, Ty>> {
+        todo!()
+    }
+
+    #[doc(hidden)]
+    fn zalsa_register_downcaster(&self) {
+        todo!()
+    }
+
+    #[doc = " Downcast a [`dyn Database`] to a [`dyn TyDatabase`]"]
+    #[doc = r""]
+    #[doc = r" # Safety"]
+    #[doc = r""]
+    #[doc = r" The input database must be of type `Self`."]
+    #[doc(hidden)]
+    unsafe fn downcast(db: &dyn salsa::plumbing::Database) -> &dyn TyDatabase
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+}
 
 impl TestDB {
     pub fn single_file(fixture: &str) -> Result<(Self, FileId)> {

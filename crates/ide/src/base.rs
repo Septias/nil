@@ -1,3 +1,4 @@
+use crate::ide::RootDatabase;
 use nix_interop::flake_output::FlakeOutput;
 use nix_interop::nixos_options::{NixosOption, NixosOptions};
 use salsa::{Durability, Setter};
@@ -15,6 +16,13 @@ pub struct FileId(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SourceRootId(pub u32);
+
+#[derive(Debug)]
+#[salsa::input]
+pub(crate) struct File {
+    #[returns(ref)]
+    content: String,
+}
 
 /// An path in the virtual filesystem.
 #[cfg(unix)]
@@ -104,34 +112,34 @@ impl From<&'_ Path> for VfsPath {
     }
 }
 
-/// A set of [`VfsPath`]s identified by [`FileId`]s.
+/// A set of [`VfsPath`]s identified by [`File`]s.
 #[derive(Default, Clone, PartialEq, Eq)]
 pub struct FileSet {
-    files: HashMap<VfsPath, FileId>,
-    paths: HashMap<FileId, VfsPath>,
+    files: HashMap<VfsPath, File>,
+    paths: HashMap<File, VfsPath>,
 }
 
 impl FileSet {
-    pub fn insert(&mut self, file: FileId, path: VfsPath) {
+    pub fn insert(&mut self, file: File, path: VfsPath) {
         self.files.insert(path.clone(), file);
         self.paths.insert(file, path);
     }
 
-    pub fn remove_file(&mut self, file: FileId) {
+    pub fn remove_file(&mut self, file: File) {
         if let Some(path) = self.paths.remove(&file) {
             self.files.remove(&path);
         }
     }
 
-    pub fn file_for_path(&self, path: &VfsPath) -> Option<FileId> {
+    pub fn file_for_path(&self, path: &VfsPath) -> Option<File> {
         self.files.get(path).copied()
     }
 
-    pub fn path_for_file(&self, file: FileId) -> &VfsPath {
+    pub fn path_for_file(&self, file: File) -> &VfsPath {
         &self.paths[&file]
     }
 
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = (FileId, &'_ VfsPath)> + '_ {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (File, &'_ VfsPath)> + '_ {
         self.paths.iter().map(|(&file, path)| (file, path))
     }
 }
@@ -143,30 +151,34 @@ impl fmt::Debug for FileSet {
 }
 
 /// A workspace unit, typically a flake package.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// It is an abstraction about files in a coding project. Files are stored in virtual file system [Vfs]
+/// and the source root handles relative and os agnostic paths.
 pub struct SourceRoot {
     file_set: FileSet,
-    entry: Option<FileId>,
+    entry: Option<File>,
 }
 
 impl SourceRoot {
-    pub fn new_local(file_set: FileSet, entry: Option<FileId>) -> Self {
-        Self { file_set, entry }
+    pub fn new_local(file_set: FileSet, entry: Option<File>) -> Self {
+        Self {
+            file_set,
+            entry: entry,
+        }
     }
 
-    pub fn file_for_path(&self, path: &VfsPath) -> Option<FileId> {
+    pub fn file_for_path(&self, path: &VfsPath) -> Option<File> {
         self.file_set.file_for_path(path)
     }
 
-    pub fn path_for_file(&self, file: FileId) -> &VfsPath {
+    pub fn path_for_file(&self, file: File) -> &VfsPath {
         self.file_set.path_for_file(file)
     }
 
-    pub fn files(&self) -> impl ExactSizeIterator<Item = (FileId, &'_ VfsPath)> + '_ {
+    pub fn files(&self) -> impl ExactSizeIterator<Item = (File, &'_ VfsPath)> + '_ {
         self.file_set.iter()
     }
 
-    pub fn entry(&self) -> Option<FileId> {
+    pub fn entry(&self) -> Option<File> {
         self.entry
     }
 }
@@ -177,9 +189,9 @@ pub struct FlakeGraph {
 }
 
 // FIXME: Make this a tree structure.
-#[derive(Clone, PartialEq, Eq)]
+#[salsa::input]
 pub struct FlakeInfo {
-    pub flake_file: FileId,
+    pub flake_file: File,
     pub input_store_paths: HashMap<String, VfsPath>,
     pub input_flake_outputs: HashMap<String, FlakeOutput>,
 }
@@ -196,12 +208,12 @@ impl fmt::Debug for FlakeInfo {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct InFile<T> {
-    pub file_id: FileId,
+    pub file_id: File,
     pub value: T,
 }
 
 impl<T> InFile<T> {
-    pub fn new(file_id: FileId, value: T) -> Self {
+    pub fn new(file_id: File, value: T) -> Self {
         Self { file_id, value }
     }
 
@@ -215,24 +227,24 @@ impl<T> InFile<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct FilePos {
-    pub file_id: FileId,
+    pub file_id: File,
     pub pos: TextSize,
 }
 
 impl FilePos {
-    pub fn new(file_id: FileId, pos: TextSize) -> Self {
+    pub fn new(file_id: File, pos: TextSize) -> Self {
         Self { file_id, pos }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct FileRange {
-    pub file_id: FileId,
+    pub file_id: File,
     pub range: TextRange,
 }
 
 impl FileRange {
-    pub fn new(file_id: FileId, range: TextRange) -> Self {
+    pub fn new(file_id: File, range: TextRange) -> Self {
         Self { file_id, range }
     }
 
@@ -241,57 +253,76 @@ impl FileRange {
     }
 }
 
-#[salsa::input]
-struct NixosOptions_{
-    options: HashMap<String, NixosOption>
-}
-
-#[salsa::input]
-struct SourceRootId_ {
-    id: SourceRootId
-}
-
 #[salsa::db]
 pub trait SourceDatabase: salsa::Database {
-    fn file_content(&self, file_id: FileId) -> Arc<str>;
-
+    // The source root
     fn source_root(&self, sid: SourceRootId) -> Arc<SourceRoot>;
+    fn set_source_root(&self, sid: SourceRootId, source_root: SourceRoot);
 
     fn source_root_flake_info(&self, sid: SourceRootId) -> Option<Arc<FlakeInfo>>;
+    fn set_source_root_flake_info(&self, sid: SourceRootId, flake_info: FlakeInfo);
 
-    fn file_source_root(&self, file_id: FileId) -> SourceRootId_;
+    fn file_source_root(&self, file_id: File) -> SourceRootId;
+    fn set_file_source_root(&self, file: File, source_id: SourceRootId);
 
     fn flake_graph(&self) -> Arc<FlakeGraph>;
+    fn set_flake_graph(&self, flake_grap: FlakeGraph);
 
-    fn nixos_options(&self) -> Arc<NixosOptions_>;
+    fn nixos_options(&self) -> Arc<NixosOptions>;
+    fn set_nixos_options(&self, nixos_options: NixosOptions);
 }
 
+#[allow(unused)]
 #[salsa::db]
 impl SourceDatabase for RootDatabase {
-    fn file_content(&self,file_id:FileId) -> Arc<str>  {
+    fn file_content(&self, file_id: File) -> Arc<str> {
+        todo!()
+    }
+    fn set_file_content(&self, file_id: File, content: &str) {
+
+        //  Durability::LOW
+    }
+    fn source_root(&self, sid: SourceRootId) -> Arc<SourceRoot> {
         todo!()
     }
 
-    fn source_root(&self,sid:SourceRootId) -> Arc<SourceRoot>  {
+    fn source_root_flake_info(&self, sid: SourceRootId) -> Option<Arc<FlakeInfo>> {
         todo!()
     }
 
-    fn source_root_flake_info(&self,sid:SourceRootId) -> Option<Arc<FlakeInfo> >  {
+    fn file_source_root(&self, file_id: File) -> SourceRootId {
         todo!()
     }
 
-    fn file_source_root(&self,file_id:FileId) -> SourceRootId_ {
+    fn flake_graph(&self) -> Arc<FlakeGraph> {
         todo!()
     }
 
-    fn flake_graph(&self) -> Arc<FlakeGraph>  {
+    fn nixos_options(&self) -> Arc<NixosOptions> {
         todo!()
     }
 
-    fn nixos_options(&self) -> Arc<NixosOptions_>  {
+    fn set_source_root(&self, sid: SourceRootId, source_root: SourceRoot) {
+        // Durability::HIGH
         todo!()
     }
 
+    fn set_source_root_flake_info(&self, sid: SourceRootId, flake_info: FlakeInfo) {
+        todo!()
+    }
+
+    fn set_file_source_root(&self, file_id: File, source_id: SourceRootId) {
+        todo!()
+    }
+
+    fn set_flake_graph(&self, flake_grap: FlakeGraph) {
+        todo!()
+    }
+
+    fn set_nixos_options(&self, nixos_options: NixosOptions) {
+        // durability:Medium
+        todo!()
+    }
 }
 
 fn source_root_flake_info(db: &dyn SourceDatabase, sid: SourceRootId) -> Option<Arc<FlakeInfo>> {
@@ -301,7 +332,7 @@ fn source_root_flake_info(db: &dyn SourceDatabase, sid: SourceRootId) -> Option<
 #[derive(Default, Clone, PartialEq, Eq)]
 pub struct Change {
     pub roots: Option<Vec<SourceRoot>>,
-    pub file_changes: Vec<(FileId, Arc<str>)>,
+    pub file_changes: Vec<(File, Arc<str>)>,
     pub flake_graph: Option<FlakeGraph>,
     pub nixos_options: Option<NixosOptions>,
 }
@@ -323,31 +354,31 @@ impl Change {
         self.roots = Some(roots);
     }
 
-    pub fn change_file(&mut self, file_id: FileId, content: Arc<str>) {
+    pub fn change_file(&mut self, file_id: File, content: Arc<str>) {
         self.file_changes.push((file_id, content));
     }
 
-    pub(crate) fn apply(self, db: &mut dyn SourceDatabase) {
+    pub(crate) fn apply(self, db: &dyn SourceDatabase) {
         if let Some(flake_graph) = self.flake_graph {
-            db.flake_graph()
-                .set_nodes(db)
-                .with_durability(Durability::MEDIUM)
-                .to(flake_graph.nodes(db));
+            // db.flake_graph()
+            //     .set_nodes(db)
+            //     .with_durability(Durability::MEDIUM)
+            //     .to(flake_graph.nodes(db));
         }
         if let Some(opts) = self.nixos_options {
-            db.nixos_options().set_options(db).with_durability(Durability::MEDIUM).to(opts);
+            db.set_nixos_options(opts);
         }
         if let Some(roots) = self.roots {
             u32::try_from(roots.len()).expect("Length overflow");
             for (sid, root) in (0u32..).map(SourceRootId).zip(roots) {
                 for (fid, _) in root.files() {
-                    db.file_source_root(fid).(sid);
+                    db.set_file_source_root(fid, sid);
                 }
-                db.set_source_root_with_durability(sid, Arc::new(root), Durability::HIGH);
+                db.set_source_root(sid, root);
             }
         }
         for (file_id, content) in self.file_changes {
-            db.set_file_content_with_durability(file_id, content, Durability::LOW);
+            db.set_file_content(file_id, &content);
         }
     }
 }
