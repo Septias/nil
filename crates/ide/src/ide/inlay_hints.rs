@@ -1,5 +1,6 @@
+use crate::base::File;
 use crate::def::parse2;
-use crate::{DefDatabase, FileId};
+use crate::{DefDatabase, File};
 use itertools::Itertools;
 use std::fmt::Display;
 use std::num::NonZero;
@@ -36,7 +37,7 @@ pub struct InlayHintsConfig {
 
 pub(crate) fn inlay_hints(
     db: &dyn DefDatabase,
-    file: FileId,
+    file: File,
     range: Option<TextRange>,
     config: InlayHintsConfig,
 ) -> Vec<InlayHintResult> {
